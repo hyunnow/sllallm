@@ -1,0 +1,52 @@
+# Per-field winning method (v4 §2, §4). Values here are the INITIAL hypotheses
+# from the spec's table; the method harness (§4) confirms or overturns each one
+# with data, and this file is then updated to the measured winner.
+#
+# Methods: rule | rule_llm | llm | classifier_kb | rule_classifier_kb
+fields:
+  # meta — short structured values
+  school: rule_llm
+  campus: rule_llm
+  department: rule_llm
+  academic_year: rule          # with print-date exclusion (§3-1)
+  term: rule
+  course_code: rule_llm
+
+  # course
+  title_ko: rule_llm
+  title_en: rule_llm
+  credits: rule
+  classification: rule_llm
+  target_students: rule_llm
+  keywords: llm
+
+  # people
+  instructor_name: rule_llm
+  email: rule                  # regex is near-perfect (+ de-obfuscation)
+  phone: rule
+  office: rule_llm
+  office_hours: rule_classifier_kb   # existing subsystem
+  bio: llm
+
+  # meeting
+  location: rule_llm
+  class_time: rule_classifier_kb     # 교시→시각 is KB-only (§3-3)
+
+  # free text — LLM with section-scoped prompts
+  objectives: llm
+  description: llm
+  prerequisites: llm
+  teaching_method: llm
+  english_syllabus: llm
+  grading: rule_llm            # "중간 40% 기말 40%" -> components
+  textbooks: llm
+
+  # schedule
+  weekly_plan: rule_llm        # rule table detect + LLM cell cleanup (§3-7)
+  exams: classifier_kb         # LLM alone hallucinates dates (§3-4)
+  assignments: classifier_kb
+
+  # admin
+  attendance_policy: llm
+  disability_support: llm
+  learning_ethics: llm

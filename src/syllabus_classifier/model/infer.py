@@ -24,7 +24,7 @@ _OFFICE_HOURS_CUES = [
 ]
 _TA_CUES = ["조교", "t/a", "ta ", " ta", "t.a", "조교 ", "teaching assistant"]
 _EXAM_CUES = ["시험", "고사", "exam", "midterm", "중간고사", "final", "기말고사", "퀴즈", "quiz"]
-_ASSIGN_CUES = ["과제", "제출", "마감", "deadline", "assignment", "숙제", "레포트", "리포트", "제출기한"]
+_ASSIGN_CUES = ["과제", "제출", "마감", "deadline", "assignment", "homework", "숙제", "레포트", "리포트", "제출기한"]
 _WEEKPLAN_CUES = ["주차", "week", "강의계획", "진도", "차시", "주별", "weekly"]
 _POLICY_CUES = ["정책", "규정", "policy", "유의사항", "안내사항", "성적", "출결"]
 _CLASS_CUES = ["수업", "강의", "class", "lecture", "강의시간", "수업시간", "정규"]
@@ -86,12 +86,14 @@ class HeuristicClassifier:
                 return self._c(Label.TA_OFFICE_HOURS, 0.9, candidate, "TA office-hours context")
             return self._c(Label.INSTRUCTOR_OFFICE_HOURS, 0.95, candidate, "office-hours context")
 
-        if _contains_any(ctx, _EXAM_CUES):
-            return self._c(Label.EXAM_TIME, 0.85, candidate, "exam context")
-
+        # assignment BEFORE exam: a "Homework & Quiz" row must classify as
+        # assignment deterministically, not flip to exam on the quiz cue (§3-9).
         # 23:59 / 11:59pm is a deadline even when a "Class N" row label is nearby.
         if _contains_any(ctx, _ASSIGN_CUES) or _DEADLINE_RE.search(text):
             return self._c(Label.ASSIGNMENT_DEADLINE, 0.8, candidate, "assignment/deadline context")
+
+        if _contains_any(ctx, _EXAM_CUES):
+            return self._c(Label.EXAM_TIME, 0.85, candidate, "exam context")
 
         # week/plan references (8주차, week 3) with no concrete class time
         if _contains_any(text, _WEEKPLAN_CUES) or _contains_any(ctx, _WEEKPLAN_CUES):

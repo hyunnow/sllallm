@@ -42,3 +42,10 @@ checkpoints/
 *.pt
 runs/
 wandb/
+
+# extracted records (real syllabus content: emails/phones) — never commit
+data/records/
+
+# comparison Excel and other spreadsheets — local only
+*.xlsx
+*.xls

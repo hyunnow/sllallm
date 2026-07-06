@@ -1,0 +1,56 @@
+# School-name dictionary (v4 §3-2): a school is confirmed ONLY against this
+# dictionary/pattern — a department label value never becomes the school.
+# Campuses matter because period timetables differ per campus (§3-3).
+#
+# Seeded with the schools present in the corpus + the spec's examples (연세/고려).
+# Extend as new schools appear.
+schools:
+  yonsei:
+    canonical: "연세대학교"
+    aliases: ["연세대", "Yonsei University", "Yonsei", "YISS"]
+    campuses: ["신촌", "국제", "원주"]     # 원주 has different period times (§3-3)
+  korea:
+    canonical: "고려대학교"
+    aliases: ["고려대", "Korea University", "KU"]
+    campuses: ["안암", "세종"]
+  kaist:
+    canonical: "KAIST"
+    aliases: ["카이스트", "한국과학기술원", "Korea Advanced Institute"]
+    campuses: []
+  unist:
+    canonical: "UNIST"
+    aliases: ["울산과학기술원", "Ulsan National Institute"]
+    campuses: []
+  hanyang:
+    canonical: "한양대학교"
+    aliases: ["한양대", "Hanyang University", "ERICA"]
+    campuses: ["서울", "ERICA"]
+  gachon:
+    canonical: "가천대학교"
+    aliases: ["가천대", "Gachon University"]
+    campuses: []
+  dankook:
+    canonical: "단국대학교"
+    aliases: ["단국대", "Dankook University"]
+    campuses: ["죽전", "천안"]
+  hongik:
+    canonical: "홍익대학교"
+    aliases: ["홍익대", "Hongik University"]
+    campuses: ["서울", "세종"]
+  nyu:
+    canonical: "New York University"
+    aliases: ["NYU", "NYU Stern", "Stern School of Business"]
+    campuses: []
+  pusan:
+    canonical: "부산대학교"
+    aliases: ["부산대", "Pusan National University"]
+    campuses: []
+  sejong:
+    canonical: "세종대학교"
+    aliases: ["세종대", "Sejong University"]
+    campuses: []
+
+# Generic patterns that mark a token as a school (not a department):
+school_patterns: ["대학교$", "University"]
+# Tokens that mark a value as a department — must never be promoted to school:
+department_markers: ["학과", "학부", "전공", "대학원", "Department", "Dept", "School of", "College of"]
