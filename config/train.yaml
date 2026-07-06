@@ -23,7 +23,10 @@ training:
   focal_gamma: 2.0
   class_weights: auto
   # only assign class_schedule above this confidence; when unsure, don't.
-  class_schedule_confidence_threshold: 0.90
+  # Tuned on VAL with the full pipeline (model + rule validator): 0.80 is the
+  # lowest threshold keeping office->class = 0 on val. Gives (test) precision
+  # 0.984 / recall 0.490 / office->class 0.000. Re-tune if the model changes.
+  class_schedule_confidence_threshold: 0.80
 
 eval:
   primary_metric: class_schedule_precision   # target 0.98~0.99+
