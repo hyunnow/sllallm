@@ -91,19 +91,27 @@ out of `class_schedule`, while a real class time is kept.
 
 ## Status
 
-**Phase 0 complete** — repo scaffold, schema/KB contracts, deterministic core
-(normalize, extract, validate, KB resolve, metrics), a heuristic baseline
-classifier, and a green end-to-end smoke test.
+**Phase 0–2 complete.**
+- **Phase 0** — repo scaffold, schema/KB contracts, deterministic core, heuristic
+  baseline, green end-to-end smoke test.
+- **Phase 1** — full corpus normalized (1026 docs → **7099 candidates**). Text
+  PDFs via pdfplumber (976), HWP via `hwp5txt` (8). 39 scanned PDFs are flagged
+  `needs_ocr` (EasyOCR on Colab); 3 legacy .doc/.docx logged unsupported. FP/recall
+  hardening on real data: class_schedule needs a range/period or an explicit
+  class-time field, killing export-timestamp and deadline false positives while
+  recovering Korean "강의시간" start-times.
+- **Phase 2** — OpenAI (`gpt-4o-mini`) assisted labeling. 968 candidates drafted;
+  labels certified on the class_schedule boundary (no office-hours leaked into
+  class; prose/timetable class times recovered vs the rule baseline). Review via
+  `scripts/02_label.py` → `data/candidates/label_review.csv`.
 
-**Next (Phase 1):** extract the real corpus (pdfplumber for text PDFs, OCR for
-scans), preserving table row/col labels.
-
-### Open questions before Phase 1
-- **OCR engine** for scanned PDFs (Korean-capable): PaddleOCR vs EasyOCR vs
-  Tesseract(+kor)? To decide together.
-- **HWP** (8 files): convert via `hwp5` → html/text, or handle manually?
-- **KB coverage:** timetables/calendars per institution must be collected to keep
-  the `needs_review` rate low. KOCW spans many schools — coverage is nontrivial.
+### Next
+- **Human spot-check** the label review (focus: the class_schedule filter).
+- **Scale labeling** across the full 7099-candidate pool to build the training set.
+- **Phase 4 → 6 → 7** — candidate dataset, group split, encoder training (Colab).
+- **Colab OCR** for the 39 scanned PDFs (EasyOCR), then re-extract those docs.
+- **KB coverage** — collect per-institution timetables/calendars to keep the
+  `needs_review` rate low (KOCW spans many schools).
 
 See `syllabus_classifier_claude_code_prompt.md` and
 `syllabus_edge_cases_master_v2.md` for the full specification.
