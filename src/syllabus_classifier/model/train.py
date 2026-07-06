@@ -62,7 +62,15 @@ def predict_with_threshold(probs, threshold: float):
 
 
 # --- training (needs torch + transformers) ---------------------------------
-def train(config_name: str = "train.yaml", data_dir: Optional[str] = None, out_dir: Optional[str] = None) -> dict:
+def train(
+    config_name: str = "train.yaml",
+    data_dir: Optional[str] = None,
+    out_dir: Optional[str] = None,
+    train_file: Optional[str] = None,
+    encoder: Optional[str] = None,
+) -> dict:
+    import inspect
+
     import numpy as np
     import torch
     import torch.nn as nn
@@ -70,6 +78,7 @@ def train(config_name: str = "train.yaml", data_dir: Optional[str] = None, out_d
     from transformers import (
         AutoModelForSequenceClassification,
         AutoTokenizer,
+        DataCollatorWithPadding,
         Trainer,
         TrainingArguments,
     )
@@ -81,14 +90,17 @@ def train(config_name: str = "train.yaml", data_dir: Optional[str] = None, out_d
     out_dir.mkdir(parents=True, exist_ok=True)
 
     mcfg, tcfg = cfg["model"], cfg["training"]
-    encoder = mcfg["encoder"]
+    encoder = encoder or mcfg["encoder"]   # explicit override wins over config
     max_len = mcfg["max_length"]
     threshold = tcfg["class_schedule_confidence_threshold"]
 
-    train_rows = load_split(splits_dir / "train.jsonl")
+    # train_file lets us point at the augmented train set (train_aug.jsonl).
+    # val/test are ALWAYS the untouched real splits — never augmented (spec §6).
+    train_path = Path(train_file) if train_file else splits_dir / "train.jsonl"
+    train_rows = load_split(train_path)
     val_rows = load_split(splits_dir / "val.jsonl")
     test_rows = load_split(splits_dir / "test.jsonl")
-    print(f"train={len(train_rows)} val={len(val_rows)} test={len(test_rows)}")
+    print(f"train={len(train_rows)} ({train_path.name}) val={len(val_rows)} test={len(test_rows)}")
 
     tokenizer = AutoTokenizer.from_pretrained(encoder)
 
@@ -120,9 +132,11 @@ def train(config_name: str = "train.yaml", data_dir: Optional[str] = None, out_d
             logits = outputs.logits
             w = class_weights.to(logits.device)
             if loss_kind == "focal":
-                ce = nn.functional.cross_entropy(logits, labels, weight=w, reduction="none")
+                # keep the focal modulator on the TRUE class prob (unweighted ce),
+                # then apply the class weight per sample — the two must stay independent.
+                ce = nn.functional.cross_entropy(logits, labels, reduction="none")
                 pt = torch.exp(-ce)
-                loss = ((1 - pt) ** gamma * ce).mean()
+                loss = (w[labels] * (1 - pt) ** gamma * ce).mean()
             elif loss_kind == "weighted_ce":
                 loss = nn.functional.cross_entropy(logits, labels, weight=w)
             else:
@@ -143,29 +157,37 @@ def train(config_name: str = "train.yaml", data_dir: Optional[str] = None, out_d
             "macro_f1": m["macro_f1"],
         }
 
-    args = TrainingArguments(
-        output_dir=str(out_dir),
-        num_train_epochs=tcfg["epochs"],
-        per_device_train_batch_size=tcfg["batch_size"],
-        per_device_eval_batch_size=tcfg["batch_size"],
-        learning_rate=float(tcfg["lr"]),
-        weight_decay=tcfg["weight_decay"],
-        warmup_ratio=tcfg["warmup_ratio"],
-        eval_strategy="epoch",
-        save_strategy="epoch",
-        load_best_model_at_end=True,
-        metric_for_best_model="class_precision",
-        greater_is_better=True,
-        logging_steps=50,
-        seed=cfg.get("seed", 42),
-    )
+    # `evaluation_strategy` was renamed to `eval_strategy` in transformers 4.41;
+    # pick whichever this installed version accepts.
+    ta_params = inspect.signature(TrainingArguments.__init__).parameters
+    eval_key = "eval_strategy" if "eval_strategy" in ta_params else "evaluation_strategy"
+    ta_kwargs = {
+        "output_dir": str(out_dir),
+        "num_train_epochs": tcfg["epochs"],
+        "per_device_train_batch_size": tcfg["batch_size"],
+        "per_device_eval_batch_size": tcfg["batch_size"],
+        "learning_rate": float(tcfg["lr"]),
+        "weight_decay": tcfg["weight_decay"],
+        "warmup_ratio": tcfg["warmup_ratio"],
+        "save_strategy": "epoch",
+        "load_best_model_at_end": True,
+        "metric_for_best_model": "class_precision",
+        "greater_is_better": True,
+        "logging_steps": 50,
+        "seed": cfg.get("seed", 42),
+        eval_key: "epoch",
+    }
+    args = TrainingArguments(**ta_kwargs)
 
-    from transformers import DataCollatorWithPadding
+    # `tokenizer=` is deprecated for `processing_class` (~transformers 4.46).
+    tr_params = inspect.signature(Trainer.__init__).parameters
+    tok_key = "processing_class" if "processing_class" in tr_params else "tokenizer"
     trainer = WeightedTrainer(
         model=model, args=args,
         train_dataset=ds_train, eval_dataset=ds_val,
-        tokenizer=tokenizer, data_collator=DataCollatorWithPadding(tokenizer),
+        data_collator=DataCollatorWithPadding(tokenizer),
         compute_metrics=compute_metrics,
+        **{tok_key: tokenizer},
     )
     trainer.train()
 

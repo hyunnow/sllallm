@@ -33,7 +33,8 @@ label = [
 # model training (Phase 7)
 train = [
     "torch>=2.2",
-    "transformers>=4.40",
+    "transformers>=4.41",
+    "datasets>=2.18",
     "scikit-learn>=1.4",
     "numpy>=1.26",
     "pandas>=2.2",

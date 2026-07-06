@@ -24,9 +24,12 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="train.yaml")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--train-file", default=None,
+                    help="override train split (e.g. data/splits/train_aug.jsonl); val/test stay real")
+    ap.add_argument("--encoder", default=None, help="override the encoder in train.yaml")
     args = ap.parse_args()
     set_seed(42)
-    train(config_name=args.config, out_dir=args.out)
+    train(config_name=args.config, out_dir=args.out, train_file=args.train_file, encoder=args.encoder)
     return 0
 
 
