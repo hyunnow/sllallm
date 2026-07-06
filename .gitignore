@@ -49,3 +49,6 @@ data/records/
 # comparison Excel and other spreadsheets — local only
 *.xlsx
 *.xls
+
+# gold review artifacts (real syllabus text / PII) — local only (v5 §2)
+data/gold/

@@ -33,8 +33,10 @@ def load_rows(path: "str | Path" = "ParserTest.xlsx") -> list[dict]:
     wb = openpyxl.load_workbook(str(path), data_only=True)
     ws = wb["데이터셋"]
     raw = list(ws.iter_rows(values_only=True))
-    header, body = raw[0], [r for r in raw[1:] if r and r[0]]
+    header = raw[0]
     idx = {h: i for i, h in enumerate(header)}
+    id_col = idx.get("syllabus_id", 0)   # header-keyed, not positional
+    body = [r for r in raw[1:] if r and r[id_col]]
 
     def cell(row, col) -> Optional[str]:
         i = idx.get(col)

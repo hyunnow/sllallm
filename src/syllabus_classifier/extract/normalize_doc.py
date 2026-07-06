@@ -103,7 +103,14 @@ class NormalizedDoc:
 
 # --- text blob (used by tests/smoke and already-extracted text) ------------
 def normalize_text_blob(doc_id: str, text: str) -> NormalizedDoc:
-    return NormalizedDoc(doc_id=doc_id, pages=[Page(page_no=1, text=text)], source_format="text")
+    """Wrap flat text as a NormalizedDoc. Flattened-table lines that use pipe
+    delimiters ("CREDIT | 3 | INSTRUCTOR | Kelly Jeong") are reconstructed as a
+    pseudo-table so the label→next-cell extraction path fires on them — plain
+    text keeps only the colon-style `label: value` fallback otherwise."""
+    rows = [[c.strip() for c in ln.split("|")] for ln in text.splitlines() if "|" in ln]
+    tables = [Table(header=[], rows=rows)] if rows else []
+    return NormalizedDoc(doc_id=doc_id, pages=[Page(page_no=1, text=text, tables=tables)],
+                         source_format="text")
 
 
 # --- PDF -------------------------------------------------------------------

@@ -34,28 +34,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from syllabus_classifier.common.config import load_config, resolve_path
+from syllabus_classifier.common.env import DEFAULT_ENV, load_env_key
 from syllabus_classifier.extract import extract_candidates_from_doc
 from syllabus_classifier.extract.normalize_doc import NormalizedDoc
 from syllabus_classifier.label import draft_labels_batch, export_for_review
 from syllabus_classifier.model import HeuristicClassifier
 from syllabus_classifier.validator import validate_candidate
 
-DEFAULT_ENV = "/Users/hyunwoo/Documents/gwatop/gwatop-backend/.env"
 RISKY = {"class_schedule", "instructor_office_hours", "ta_office_hours", "unknown"}
-
-
-def load_env_key(env_file: str, var: str = "OPENAI_API_KEY") -> bool:
-    if os.environ.get(var):
-        return True
-    p = Path(env_file)
-    if not p.exists():
-        return False
-    for line in p.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line.startswith(f"{var}="):
-            os.environ[var] = line.split("=", 1)[1].strip().strip('"').strip("'")
-            return True
-    return False
 
 
 def cand_key(c) -> str:
