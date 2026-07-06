@@ -71,21 +71,30 @@ def build_batch_prompt(candidates: list[TimeCandidate]) -> list[dict]:
 
 
 def draft_labels_batch(
-    candidates: list[TimeCandidate], model: str = "gpt-4o-mini", client=None, temperature: float = 0.1
+    candidates: list[TimeCandidate],
+    model: str = "gpt-4o-mini",
+    client=None,
+    temperature: float = 0.1,
+    timeout: float = 45.0,
 ) -> list[dict]:
     """Draft labels for a batch of candidates in a single API call. Returns a list
-    aligned to `candidates` (index i -> label dict, or {} if the model omitted it)."""
+    aligned to `candidates` (index i -> label dict, or {} if the model omitted it).
+
+    `timeout` bounds each request so a stalled call fails fast instead of hanging
+    on the SDK's 10-minute default.
+    """
     if not candidates:
         return []
     if client is None:
         from openai import OpenAI
 
-        client = OpenAI()
+        client = OpenAI(timeout=timeout, max_retries=3)
     resp = client.chat.completions.create(
         model=model,
         messages=build_batch_prompt(candidates),
         response_format={"type": "json_object"},
         temperature=temperature,
+        timeout=timeout,
     )
     data = json.loads(resp.choices[0].message.content)
     by_index = {item.get("index"): item for item in data.get("labels", [])}

@@ -6,19 +6,24 @@ batch (stratified across the heuristic labels, oversampling the risky
 office-hours / class_schedule / ambiguous boundary), drafts a label for each
 with OpenAI, and writes a review CSV where a human corrects only what's wrong.
 
-Also reports LLM-vs-heuristic agreement — disagreements are exactly where the
-labels are worth a human's attention.
+Robustness (learned the hard way — the SDK's 10-min default timeout can hang):
+  - per-request timeout (--timeout) so a stalled call fails fast,
+  - concurrent batches (--workers) so 350+ calls finish in minutes,
+  - INCREMENTAL checkpoint: every completed batch is appended to the review
+    JSONL immediately, so a crash never loses finished work,
+  - --resume skips candidates already in the checkpoint.
 
 Usage:
-  python scripts/01_normalize.py --sample 100          # produce normalized docs
-  python scripts/02_label.py --n 150 --batch 15        # draft labels for 150 candidates
+  python scripts/01_normalize.py                       # normalize corpus
+  python scripts/02_label.py --n 8000 --workers 6      # label everything
+  python scripts/02_label.py --resume                  # continue after a stop
 
-The OpenAI key is loaded from --env-file (default: the gwatop backend .env) so
-it never has to be pasted or printed.
+The OpenAI key is loaded from --env-file so it is never pasted or printed.
 """
 from __future__ import annotations
 
 import argparse
+import concurrent.futures as cf
 import json
 import os
 import random
@@ -36,7 +41,6 @@ from syllabus_classifier.model import HeuristicClassifier
 from syllabus_classifier.validator import validate_candidate
 
 DEFAULT_ENV = "/Users/hyunwoo/Documents/gwatop/gwatop-backend/.env"
-# oversample the labels where a mistake is most costly / most informative
 RISKY = {"class_schedule", "instructor_office_hours", "ta_office_hours", "unknown"}
 
 
@@ -54,8 +58,11 @@ def load_env_key(env_file: str, var: str = "OPENAI_API_KEY") -> bool:
     return False
 
 
+def cand_key(c) -> str:
+    return f"{c.doc_id}|{c.page}|{c.char_start}|{c.candidate_text}"
+
+
 def collect_candidates(norm_dir: Path):
-    """Return (candidate, heuristic_label) for all candidates in normalized docs."""
     clf = HeuristicClassifier()
     out = []
     for fp in sorted(norm_dir.glob("*.json")):
@@ -67,103 +74,126 @@ def collect_candidates(norm_dir: Path):
 
 
 def stratified_pick(items, n, seed=42):
-    """Pick n candidates spread across heuristic labels, oversampling RISKY ones."""
     by_label = defaultdict(list)
     for c, lab in items:
         by_label[lab].append((c, lab))
     rng = random.Random(seed)
     for v in by_label.values():
         rng.shuffle(v)
-    picked, i = [], 0
-    # round-robin, giving risky labels a double turn
-    order = list(by_label.keys())
+    picked, order = [], list(by_label.keys())
     while len(picked) < n and any(by_label.values()):
         for lab in order:
-            take = 2 if lab in RISKY else 1
-            for _ in range(take):
+            for _ in range(2 if lab in RISKY else 1):
                 if by_label[lab] and len(picked) < n:
                     picked.append(by_label[lab].pop())
     return picked[:n]
 
 
+def row_for(c, heur, d):
+    return {
+        "_key": cand_key(c),
+        "doc_id": c.doc_id,
+        "candidate_text": c.candidate_text,
+        "section_title": c.section_title,
+        "table_row_label": c.table_row_label,
+        "nearby_text_before": c.nearby_text_before,
+        "nearby_text_after": c.nearby_text_after,
+        "date_kind": c.date_kind,
+        "heuristic_label": heur,
+        "predicted_label": d.get("classified_as"),
+        "include_in_class_schedule": d.get("include_in_class_schedule"),
+        "confidence": d.get("confidence"),
+        "evidence": d.get("evidence"),
+        "corrected_label": "",
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--n", type=int, default=150, help="candidates to label")
-    ap.add_argument("--batch", type=int, default=15, help="candidates per API call")
+    ap.add_argument("--n", type=int, default=150)
+    ap.add_argument("--batch", type=int, default=20)
+    ap.add_argument("--workers", type=int, default=6)
+    ap.add_argument("--timeout", type=float, default=45.0)
     ap.add_argument("--model", default="gpt-4o-mini")
     ap.add_argument("--env-file", default=DEFAULT_ENV)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--resume", action="store_true", help="skip candidates already in the checkpoint")
     args = ap.parse_args()
 
     if not load_env_key(args.env_file):
         print(f"ERROR: OPENAI_API_KEY not found in env or {args.env_file}")
         return 1
-    print("OpenAI key loaded (not shown).")
+    print("OpenAI key loaded (not shown).", flush=True)
 
     cfg = load_config("data.yaml")
     norm_dir = resolve_path(cfg["paths"]["normalized_dir"])
     out_dir = resolve_path(cfg["paths"]["candidates_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
+    ckpt = out_dir / "label_review.jsonl"
 
     all_cands = collect_candidates(norm_dir)
     if not all_cands:
-        print(f"no candidates. Run scripts/01_normalize.py --sample N first.")
+        print("no candidates. Run scripts/01_normalize.py first.")
         return 1
     picked = stratified_pick(all_cands, args.n, args.seed)
-    print(f"labeling {len(picked)} of {len(all_cands)} candidates "
-          f"(model={args.model}, batch={args.batch})\n")
+
+    done_keys, existing = set(), []
+    if args.resume and ckpt.exists():
+        for line in ckpt.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                r = json.loads(line)
+                existing.append(r)
+                done_keys.add(r.get("_key"))
+    else:
+        ckpt.write_text("", encoding="utf-8")  # fresh run: truncate
+
+    todo = [(c, h) for (c, h) in picked if cand_key(c) not in done_keys]
+    chunks = [todo[i:i + args.batch] for i in range(0, len(todo), args.batch)]
+    print(f"labeling {len(todo)} candidates in {len(chunks)} batches "
+          f"(model={args.model}, workers={args.workers}, timeout={args.timeout}s); "
+          f"{len(done_keys)} already done\n", flush=True)
 
     from openai import OpenAI
-    client = OpenAI()
+    client = OpenAI(timeout=args.timeout, max_retries=3)
 
-    rows = []
-    agree = 0
-    conf = Counter()  # (heuristic, llm) pairs
-    for start in range(0, len(picked), args.batch):
-        chunk = picked[start:start + args.batch]
+    def do_chunk(chunk):
         cands = [c for c, _ in chunk]
         try:
-            drafts = draft_labels_batch(cands, model=args.model, client=client)
+            drafts = draft_labels_batch(cands, model=args.model, client=client, timeout=args.timeout)
         except Exception as e:
-            print(f"  batch {start//args.batch} failed: {type(e).__name__}: {e}")
+            print(f"  batch failed: {type(e).__name__}: {e}", flush=True)
             drafts = [{} for _ in cands]
-        for (c, heur), d in zip(chunk, drafts):
-            llm_label = d.get("classified_as")
-            if llm_label == heur:
-                agree += 1
-            conf[(heur, llm_label)] += 1
-            rows.append({
-                "doc_id": c.doc_id,
-                "candidate_text": c.candidate_text,
-                "section_title": c.section_title,
-                "table_row_label": c.table_row_label,
-                "nearby_text_before": c.nearby_text_before,
-                "nearby_text_after": c.nearby_text_after,
-                "heuristic_label": heur,
-                "predicted_label": llm_label,
-                "include_in_class_schedule": d.get("include_in_class_schedule"),
-                "confidence": d.get("confidence"),
-                "evidence": d.get("evidence"),
-                "corrected_label": "",  # human fills only when wrong
-            })
-        print(f"  labeled {min(start+args.batch, len(picked))}/{len(picked)}")
+        return [row_for(c, h, d) for (c, h), d in zip(chunk, drafts)]
 
-    review_csv = out_dir / "label_review.csv"
-    export_for_review(rows, str(review_csv), fmt="csv")
-    (out_dir / "label_review.jsonl").write_text(
-        "\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8"
-    )
+    all_rows = list(existing)
+    done_batches = 0
+    with open(ckpt, "a", encoding="utf-8") as fh, \
+         cf.ThreadPoolExecutor(max_workers=args.workers) as ex:
+        futs = [ex.submit(do_chunk, ch) for ch in chunks]
+        for fut in cf.as_completed(futs):
+            rows = fut.result()
+            for r in rows:
+                fh.write(json.dumps(r, ensure_ascii=False) + "\n")
+            fh.flush()
+            all_rows.extend(rows)
+            done_batches += 1
+            if done_batches % 5 == 0 or done_batches == len(chunks):
+                print(f"  {done_batches}/{len(chunks)} batches "
+                      f"({sum(1 for r in all_rows if r['predicted_label'])} labeled)", flush=True)
+
+    # dedupe by key (keep last)
+    by_key = {r["_key"]: r for r in all_rows}
+    rows = list(by_key.values())
+    export_for_review(rows, str(out_dir / "label_review.csv"), fmt="csv")
+    ckpt.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
 
     labeled = [r for r in rows if r["predicted_label"]]
-    print(f"\n=== LLM label distribution ===")
+    agree = sum(1 for r in rows if r["predicted_label"] == r["heuristic_label"])
+    print(f"\n=== {len(rows)} rows | {len(labeled)} labeled | "
+          f"agreement {agree}/{len(rows)} ({100*agree/max(len(rows),1):.0f}%) ===", flush=True)
     for lab, k in Counter(r["predicted_label"] for r in labeled).most_common():
-        print(f"  {str(lab):26} {k}")
-    print(f"\nLLM vs heuristic agreement: {agree}/{len(rows)} ({100*agree/max(len(rows),1):.0f}%)")
-    print("=== top disagreements (heuristic -> llm : count) ===")
-    for (h, l), k in conf.most_common():
-        if h != l:
-            print(f"  {h:24} -> {str(l):24} {k}")
-    print(f"\nreview file (correct only what's wrong) -> {review_csv}")
+        print(f"  {str(lab):26} {k}", flush=True)
+    print(f"\nreview file -> {out_dir/'label_review.csv'}", flush=True)
     return 0
 
 
