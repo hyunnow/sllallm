@@ -42,6 +42,56 @@ def build_labeling_prompt(candidate: TimeCandidate) -> list[dict]:
     return [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user}]
 
 
+def _candidate_lines(candidate: TimeCandidate, idx: int) -> str:
+    def clip(s, n=120):
+        s = (s or "").replace("\n", " ").strip()
+        return s[:n]
+
+    return (
+        f"[{idx}] candidate_text: {clip(candidate.candidate_text, 60)}\n"
+        f"    section_title: {clip(candidate.section_title)}\n"
+        f"    table_row_label: {clip(candidate.table_row_label)}\n"
+        f"    table_col_label: {clip(candidate.table_col_label)}\n"
+        f"    nearby_before: {clip(candidate.nearby_text_before)}\n"
+        f"    nearby_after: {clip(candidate.nearby_text_after)}"
+    )
+
+
+def build_batch_prompt(candidates: list[TimeCandidate]) -> list[dict]:
+    """One prompt labeling many candidates at once (cheaper than one call each)."""
+    body = "\n".join(_candidate_lines(c, i) for i, c in enumerate(candidates))
+    user = (
+        "Label EACH candidate below. Return a JSON object of the form "
+        '{"labels": [{"index": <int>, "classified_as": <label>, '
+        '"include_in_class_schedule": <bool>, "confidence": <0..1>, '
+        '"evidence": <short quote from the context>}]} with exactly one entry per index.\n\n'
+        + body
+    )
+    return [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user}]
+
+
+def draft_labels_batch(
+    candidates: list[TimeCandidate], model: str = "gpt-4o-mini", client=None, temperature: float = 0.1
+) -> list[dict]:
+    """Draft labels for a batch of candidates in a single API call. Returns a list
+    aligned to `candidates` (index i -> label dict, or {} if the model omitted it)."""
+    if not candidates:
+        return []
+    if client is None:
+        from openai import OpenAI
+
+        client = OpenAI()
+    resp = client.chat.completions.create(
+        model=model,
+        messages=build_batch_prompt(candidates),
+        response_format={"type": "json_object"},
+        temperature=temperature,
+    )
+    data = json.loads(resp.choices[0].message.content)
+    by_index = {item.get("index"): item for item in data.get("labels", [])}
+    return [by_index.get(i, {}) for i in range(len(candidates))]
+
+
 def draft_label_with_openai(candidate: TimeCandidate, model: str = "gpt-4o-mini") -> dict:
     """Call OpenAI to draft one label. Requires OPENAI_API_KEY and the openai SDK."""
     try:
