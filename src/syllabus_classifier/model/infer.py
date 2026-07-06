@@ -37,10 +37,23 @@ _TIME_RANGE_RE = re.compile(r"(?:\d{1,2}:\d{2}|\d{1,2}\s*시)\s*[~\-–—]\s*(?
 _PERIOD_RE = re.compile(r"\d*\s*교시")
 # 23:59 / 11:59pm — the classic assignment-deadline instant.
 _DEADLINE_RE = re.compile(r"23:59|11:59\s*pm", re.IGNORECASE)
+# any clock time (a single start time counts, but only inside a class-time field)
+_ANY_TIME_RE = re.compile(r"\d{1,2}:\d{2}|\d{1,2}\s*시")
+# a table row/col explicitly labeled as the class-meeting-time field. A time in
+# such a cell IS the class time even if written as a single start (월 18:00).
+_CLASS_FIELD_RE = re.compile(
+    r"강의\s*시간|수업\s*시간|강의\s*요일|수업\s*요일|class\s*time|class\s*hour|meeting\s*time|lecture\s*time",
+    re.IGNORECASE,
+)
 
 
 def _is_class_time_shape(text: str) -> bool:
     return bool(_TIME_RANGE_RE.search(text) or _PERIOD_RE.search(text))
+
+
+def _in_class_field(candidate) -> bool:
+    where = f"{candidate.table_row_label or ''} {candidate.table_col_label or ''} {candidate.section_title or ''}"
+    return bool(_CLASS_FIELD_RE.search(where))
 
 
 def _contains_any(haystack: str, needles: list[str]) -> bool:
@@ -88,10 +101,16 @@ class HeuristicClassifier:
         if _contains_any(ctx, _POLICY_CUES):
             return self._c(Label.POLICY_TEXT, 0.6, candidate, "policy text")
 
-        # class time: needs a positive class cue AND a class-time SHAPE (a range
-        # or a 교시 — not a single point time). When in doubt, we do NOT pick class.
-        if _is_class_time_shape(text) and _contains_any(ctx, _CLASS_CUES):
-            return self._c(Label.CLASS_SCHEDULE, 0.9, candidate, "class-time context with time range/period")
+        # class time. Two ways to qualify (both need a class cue in context):
+        #  1. a class-time SHAPE (range or 교시) anywhere, or
+        #  2. any clock time sitting in an explicit class-time FIELD/row
+        #     (강의시간/Class Time) — a single start time there is the class time.
+        # A lone time with neither is NOT class (kills export timestamps).
+        if _contains_any(ctx, _CLASS_CUES):
+            if _is_class_time_shape(text):
+                return self._c(Label.CLASS_SCHEDULE, 0.9, candidate, "class cue + time range/period")
+            if _in_class_field(candidate) and _ANY_TIME_RE.search(text):
+                return self._c(Label.CLASS_SCHEDULE, 0.85, candidate, "start time in an explicit class-time field")
 
         # a lone point time, bare weekday, or no class context — do NOT guess class.
         return self._c(Label.UNKNOWN, 0.4, candidate, "insufficient context / not a class-time shape")

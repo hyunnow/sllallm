@@ -87,6 +87,19 @@ def test_time_range_in_class_row_is_kept():
     assert out["class_schedule"]["status"] == "present"
 
 
+def test_single_start_time_in_class_field_is_kept():
+    # 부산대 style: "월 18:00(100) 강의실" — single start time, but the row is
+    # explicitly the class-time field, so it IS the class time.
+    out, _ = _run("월 18:00", section_title=None, table_row_label="강의시간 및 강의실")
+    assert out["class_schedule"]["status"] == "present"
+
+
+def test_single_time_without_class_field_is_not_class():
+    # Same single time, but NO class-time field label -> not class_schedule.
+    _, validated = _run("18:00", section_title="비고", table_row_label="기타")
+    assert "class_schedule" not in _labels(validated)
+
+
 def test_empty_class_time_not_filled_from_office_hours():
     # class-time row empty; only office hours present -> class_schedule stays empty
     out, _ = _run(

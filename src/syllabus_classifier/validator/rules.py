@@ -27,8 +27,18 @@ _DURATION_RE = re.compile(r"^\s*\d+\s*분(?:간)?\s*$")
 _WEEK_ONLY_RE = re.compile(r"\d+\s*주차|week\s*\d+", re.IGNORECASE)
 _HAS_CLOCK_RE = re.compile(r"\d{1,2}:\d{2}|\d{1,2}\s*시|교시")
 # A real class time is a range or a 교시. A lone point time (export timestamp,
-# deadline instant) must never survive as class_schedule.
+# deadline instant) must never survive as class_schedule — UNLESS it sits in a
+# row/col explicitly labeled as the class-meeting-time field.
 _CLASS_SHAPE_RE = re.compile(r"(?:\d{1,2}:\d{2}|\d{1,2}\s*시)\s*[~\-–—]\s*(?:\d{1,2}:\d{2}|\d{1,2}\s*시)|\d*\s*교시")
+_CLASS_FIELD_RE = re.compile(
+    r"강의\s*시간|수업\s*시간|강의\s*요일|수업\s*요일|class\s*time|class\s*hour|meeting\s*time|lecture\s*time",
+    re.IGNORECASE,
+)
+
+
+def _in_class_field(candidate: TimeCandidate) -> bool:
+    where = f"{candidate.table_row_label or ''} {candidate.table_col_label or ''} {candidate.section_title or ''}"
+    return bool(_CLASS_FIELD_RE.search(where))
 
 
 def has_office_hours_context(candidate: TimeCandidate) -> bool:
@@ -89,12 +99,14 @@ def validate_candidate(
     ):
         return reject("Week-only reference has no concrete class time.", Label.WEEKLY_PLAN), rejection
 
-    # Rule 4: class_schedule must have a class-time shape (range/period). A lone
-    # point time (export timestamp, deadline instant) is not a class time. This
-    # also guards the future trained model, not just the heuristic baseline.
+    # Rule 4: class_schedule must have a class-time shape (range/period), UNLESS
+    # it sits in an explicit class-time field (강의시간/Class Time), where a single
+    # start time is legitimate. A lone point time with neither (export timestamp,
+    # deadline instant) is rejected. Guards the future model, not just the baseline.
     if (
         classification.classified_as == Label.CLASS_SCHEDULE.value
         and not _CLASS_SHAPE_RE.search(candidate.candidate_text or "")
+        and not _in_class_field(candidate)
     ):
         return reject("Single point time, not a class-time shape (range/period expected).", Label.UNKNOWN), rejection
 
