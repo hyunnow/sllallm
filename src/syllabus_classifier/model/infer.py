@@ -124,3 +124,52 @@ class HeuristicClassifier:
             evidence_label=cand.table_row_label or cand.section_title,
             reason=reason,
         )
+
+
+class EncoderClassifier:
+    """Trained-encoder classifier (Phase 7 output) behind the same `Classifier`
+    interface as HeuristicClassifier — so the pipeline/validator are unchanged.
+
+    Applies the conservative class_schedule threshold: a low-confidence
+    class_schedule prediction is demoted to its runner-up (precision > recall).
+    torch/transformers are imported lazily in __init__.
+    """
+
+    def __init__(self, model_dir: str, threshold: float = 0.80, max_length: int = 256, device=None):
+        import torch
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+        from .train import ID2LABEL, predict_with_threshold
+
+        self._torch = torch
+        self._id2label = ID2LABEL
+        self._pwt = predict_with_threshold
+        self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_dir)
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.model.to(self.device).eval()
+        self.threshold = threshold
+        self.max_length = max_length
+
+    @staticmethod
+    def _compose(candidate: TimeCandidate) -> str:
+        from ..dataset.build import compose_input
+
+        return compose_input(candidate.to_dict())
+
+    def predict(self, candidate: TimeCandidate) -> Classification:
+        enc = self.tokenizer(
+            self._compose(candidate), truncation=True, max_length=self.max_length, return_tensors="pt"
+        ).to(self.device)
+        with self._torch.no_grad():
+            logits = self.model(**enc).logits
+        probs = self._torch.softmax(logits, dim=1).cpu().numpy()
+        top = self._pwt(probs, self.threshold)[0]
+        label = self._id2label[top]
+        return Classification(
+            classified_as=label,
+            include_in_class_schedule=include_in_class_schedule(label),
+            confidence=float(probs[0][top]),
+            evidence_label=candidate.table_row_label or candidate.section_title,
+            reason="encoder",
+        )

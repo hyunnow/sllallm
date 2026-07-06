@@ -1,3 +1,3 @@
-from .infer import Classifier, HeuristicClassifier
+from .infer import Classifier, EncoderClassifier, HeuristicClassifier
 
-__all__ = ["Classifier", "HeuristicClassifier"]
+__all__ = ["Classifier", "EncoderClassifier", "HeuristicClassifier"]
