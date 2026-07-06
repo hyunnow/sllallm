@@ -125,6 +125,33 @@ def extract_candidates(
     return candidates
 
 
+def extract_candidates_from_doc(doc) -> list[TimeCandidate]:
+    """Extract candidates from a NormalizedDoc (Phase 1 output).
+
+    Table cells are processed first so a candidate carries its row/col labels
+    (e.g. row_label='면담시간') — the strongest classification cue. Free page
+    text then fills in anything not inside a table. De-duplicated per page by
+    candidate text, preferring the table-context version.
+    """
+    seen: dict[tuple, TimeCandidate] = {}
+    for page in doc.pages:
+        for table in page.tables:
+            for row_label, col_label, cell_text in table.cells():
+                for c in extract_candidates(
+                    cell_text,
+                    table_row_label=row_label or None,
+                    table_col_label=col_label or None,
+                    page=page.page_no,
+                    doc_id=doc.doc_id,
+                ):
+                    seen[(page.page_no, c.candidate_text)] = c
+        for c in extract_candidates(page.text, page=page.page_no, doc_id=doc.doc_id):
+            key = (page.page_no, c.candidate_text)
+            if key not in seen:
+                seen[key] = c
+    return list(seen.values())
+
+
 def _dedupe_longest(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
     """Drop any span fully contained in another; sort by position."""
     spans = sorted(set(spans), key=lambda s: (s[0], -(s[1] - s[0])))

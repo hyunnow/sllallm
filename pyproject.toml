@@ -13,15 +13,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# document extraction (Phase 1)
+# document extraction (Phase 1): text PDFs + HWP
 extract = [
     "pdfplumber>=0.11",
-    "pdf2image>=1.17",
+    "pyhwp>=0.1b12",       # provides hwp5txt for .hwp files
 ]
-# OCR for scanned PDFs / images (engine TBD — see README open question)
+# OCR for scanned PDFs (~10% of corpus, mostly KOCW). EasyOCR pulls torch;
+# pdf2image needs poppler installed on the system.
 ocr = [
-    "pytesseract>=0.3.10",
+    "easyocr>=1.7",
+    "pdf2image>=1.17",
     "Pillow>=10.0",
+    "numpy>=1.26",
 ]
 # LLM-assisted labeling (Phase 2) — OpenAI key available
 label = [

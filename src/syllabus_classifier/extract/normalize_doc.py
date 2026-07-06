@@ -1,64 +1,219 @@
-"""Document normalization (Phase 1): raw file -> text + tables + sections.
+"""Document normalization (Phase 1): raw file -> text + tables + pages.
+
+Format handling (measured on the real corpus: ~90% text PDF, ~10% scanned,
+a few HWP):
+  - text PDF     -> pdfplumber (page text + tables, row/col labels preserved)
+  - scanned PDF  -> pdf2image + EasyOCR   (lazy; needs poppler + torch, runs on Colab)
+  - HWP          -> pyhwp `hwp5txt`
 
 Tables MUST retain row/col labels — whether a time sits in the "면담시간" row is
-the single strongest classification cue (spec Phase 1).
-
-Format plan (answered so far: text PDF + scan PDF):
-  - text PDF  -> pdfplumber (text + tables)
-  - scan PDF  -> pdf2image + OCR   (OCR engine TBD — see README "Open question")
-Low-quality / failed extractions are logged, never silently dropped (spec Phase 1).
-
-STATUS: `normalize_text_blob` is implemented so synthetic text flows end-to-end
-today (smoke test). The PDF/OCR paths are stubbed until the real data location
-and OCR engine are confirmed.
+the single strongest classification cue (spec Phase 1). Low-quality / failed
+extractions are recorded in `notes`, never silently dropped.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+import logging
+import shutil
+import subprocess
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Iterator, Optional
+
+# pdfminer (under pdfplumber) is noisy about CropBox etc.; quiet it.
+logging.getLogger("pdfminer").setLevel(logging.ERROR)
+logging.getLogger("pdfplumber").setLevel(logging.ERROR)
+
+# below this many characters per page on average, treat the PDF as scanned.
+_SCAN_CHARS_PER_PAGE = 30
+
+# hwp5txt may live in a user bin not on PATH.
+_HWP5TXT = shutil.which("hwp5txt") or str(Path.home() / "Library/Python/3.9/bin/hwp5txt")
 
 
 @dataclass
-class NormalizedSection:
-    title: Optional[str]
-    text: str
-    page: int = 1
-    rows: list[dict] = field(default_factory=list)  # [{"row_label":..., "col_label":..., "text":...}]
+class Table:
+    header: list[str] = field(default_factory=list)   # column labels (first row)
+    rows: list[list[str]] = field(default_factory=list)
+
+    def cells(self) -> Iterator[tuple[str, str, str]]:
+        """Yield (row_label, col_label, cell_text) for each non-empty body cell.
+        row_label = first cell of the row; col_label = header of the column."""
+        for row in self.rows:
+            row_label = row[0].strip() if row else ""
+            for c, cell in enumerate(row):
+                text = (cell or "").strip()
+                if not text:
+                    continue
+                col_label = self.header[c].strip() if c < len(self.header) and self.header[c] else ""
+                yield row_label, col_label, text
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class Page:
+    page_no: int
+    text: str = ""
+    tables: list[Table] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {"page_no": self.page_no, "text": self.text, "tables": [t.to_dict() for t in self.tables]}
 
 
 @dataclass
 class NormalizedDoc:
     doc_id: str
-    sections: list[NormalizedSection] = field(default_factory=list)
-    source_format: Optional[str] = None
-    extraction_quality: str = "ok"       # ok | low | failed
+    pages: list[Page] = field(default_factory=list)
+    source_format: Optional[str] = None     # pdf_text | pdf_scan | hwp
+    extraction_quality: str = "ok"          # ok | low | needs_ocr | failed
     notes: list[str] = field(default_factory=list)
 
+    @property
+    def full_text(self) -> str:
+        return "\n".join(p.text for p in self.pages)
 
-def normalize_text_blob(doc_id: str, text: str, section_title: Optional[str] = None) -> NormalizedDoc:
-    """Wrap a plain-text blob as a NormalizedDoc (used by the smoke test and by
-    already-extracted text). No parsing magic — one section, one page."""
-    return NormalizedDoc(
-        doc_id=doc_id,
-        sections=[NormalizedSection(title=section_title, text=text, page=1)],
-        source_format="text",
-    )
+    def to_dict(self) -> dict:
+        return {
+            "doc_id": self.doc_id,
+            "source_format": self.source_format,
+            "extraction_quality": self.extraction_quality,
+            "notes": self.notes,
+            "pages": [p.to_dict() for p in self.pages],
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "NormalizedDoc":
+        pages = [
+            Page(
+                page_no=p["page_no"],
+                text=p.get("text", ""),
+                tables=[Table(header=t.get("header", []), rows=t.get("rows", [])) for t in p.get("tables", [])],
+            )
+            for p in d.get("pages", [])
+        ]
+        return cls(
+            doc_id=d["doc_id"],
+            pages=pages,
+            source_format=d.get("source_format"),
+            extraction_quality=d.get("extraction_quality", "ok"),
+            notes=d.get("notes", []),
+        )
 
 
+# --- text blob (used by tests/smoke and already-extracted text) ------------
+def normalize_text_blob(doc_id: str, text: str) -> NormalizedDoc:
+    return NormalizedDoc(doc_id=doc_id, pages=[Page(page_no=1, text=text)], source_format="text")
+
+
+# --- PDF -------------------------------------------------------------------
 def normalize_pdf(path: str, doc_id: str) -> NormalizedDoc:
-    """Text PDF -> NormalizedDoc via pdfplumber (Phase 1)."""
-    raise NotImplementedError(
-        "Phase 1: implement with pdfplumber once data/raw location is confirmed. "
-        "Preserve table row/col labels."
-    )
+    """Text PDF -> NormalizedDoc via pdfplumber. Falls back to OCR if the PDF has
+    no extractable text layer (scanned)."""
+    import pdfplumber
+
+    pages: list[Page] = []
+    total_chars = 0
+    try:
+        with pdfplumber.open(path) as pdf:
+            for i, pg in enumerate(pdf.pages, 1):
+                text = pg.extract_text() or ""
+                total_chars += len(text)
+                tables = []
+                try:
+                    for raw in pg.extract_tables():
+                        rows = [[(c or "").strip() for c in row] for row in raw if row]
+                        if rows:
+                            tables.append(Table(header=rows[0], rows=rows[1:]))
+                except Exception as e:  # table extraction can fail on odd layouts
+                    pages_note = f"table extract failed p{i}: {type(e).__name__}"
+                pages.append(Page(page_no=i, text=text, tables=tables))
+    except Exception as e:
+        return NormalizedDoc(doc_id=doc_id, source_format="pdf", extraction_quality="failed",
+                             notes=[f"pdfplumber open failed: {type(e).__name__}: {e}"])
+
+    npages = max(len(pages), 1)
+    if total_chars / npages < _SCAN_CHARS_PER_PAGE:
+        # no usable text layer -> scanned; defer to OCR.
+        doc = normalize_scanned_pdf(path, doc_id)
+        if doc is not None:
+            return doc
+        return NormalizedDoc(doc_id=doc_id, pages=pages, source_format="pdf_scan",
+                             extraction_quality="needs_ocr",
+                             notes=[f"no text layer ({total_chars} chars / {npages} pages); OCR unavailable here"])
+
+    quality = "ok" if total_chars / npages >= 100 else "low"
+    return NormalizedDoc(doc_id=doc_id, pages=pages, source_format="pdf_text", extraction_quality=quality)
 
 
-def normalize_scanned_pdf(path: str, doc_id: str, ocr_engine: Optional[str] = None) -> NormalizedDoc:
-    """Scanned PDF/image -> NormalizedDoc via pdf2image + OCR (Phase 1).
+def normalize_scanned_pdf(path: str, doc_id: str, langs: tuple[str, ...] = ("ko", "en")) -> Optional[NormalizedDoc]:
+    """Scanned PDF -> NormalizedDoc via pdf2image + EasyOCR.
 
-    OCR engine is an open question (Korean-capable): candidates are PaddleOCR,
-    EasyOCR, or Tesseract(+kor). To be decided with the user before implementing.
+    Returns None if the local environment lacks poppler/EasyOCR (e.g. this Mac);
+    the caller then marks the doc needs_ocr. On Colab (poppler + torch present)
+    this runs for real.
     """
-    raise NotImplementedError(
-        "Phase 1: implement OCR path after choosing a Korean-capable OCR engine."
-    )
+    try:
+        from pdf2image import convert_from_path  # needs poppler
+        import easyocr  # needs torch
+    except Exception:
+        return None
+    try:
+        reader = easyocr.Reader(list(langs), gpu=True)
+        images = convert_from_path(path, dpi=200)
+        pages = []
+        for i, img in enumerate(images, 1):
+            import numpy as np
+            lines = reader.readtext(np.array(img), detail=0, paragraph=True)
+            pages.append(Page(page_no=i, text="\n".join(lines)))
+        return NormalizedDoc(doc_id=doc_id, pages=pages, source_format="pdf_scan", extraction_quality="ok",
+                             notes=["OCR via EasyOCR"])
+    except Exception as e:
+        return NormalizedDoc(doc_id=doc_id, source_format="pdf_scan", extraction_quality="failed",
+                             notes=[f"OCR failed: {type(e).__name__}: {e}"])
+
+
+# --- HWP -------------------------------------------------------------------
+def normalize_hwp(path: str, doc_id: str) -> NormalizedDoc:
+    """HWP -> NormalizedDoc via pyhwp `hwp5txt`. Tables come through as text with
+    <표> markers; structural row/col labels are not recovered (only 8 files)."""
+    if not Path(_HWP5TXT).exists():
+        return NormalizedDoc(doc_id=doc_id, source_format="hwp", extraction_quality="failed",
+                             notes=["hwp5txt not found (pip install pyhwp)"])
+    try:
+        out = subprocess.run([_HWP5TXT, str(path)], capture_output=True, timeout=60)
+        text = out.stdout.decode("utf-8", errors="replace")
+        if not text.strip():
+            return NormalizedDoc(doc_id=doc_id, source_format="hwp", extraction_quality="failed",
+                                 notes=["hwp5txt produced no text"])
+        return NormalizedDoc(doc_id=doc_id, pages=[Page(page_no=1, text=text)],
+                             source_format="hwp", extraction_quality="ok")
+    except Exception as e:
+        return NormalizedDoc(doc_id=doc_id, source_format="hwp", extraction_quality="failed",
+                             notes=[f"hwp5txt failed: {type(e).__name__}: {e}"])
+
+
+# --- dispatch + corpus iteration ------------------------------------------
+def normalize_file(path: str, doc_id: Optional[str] = None) -> NormalizedDoc:
+    p = Path(path)
+    doc_id = doc_id or p.stem
+    ext = p.suffix.lower()
+    if ext == ".pdf":
+        return normalize_pdf(str(p), doc_id)
+    if ext in (".hwp", ".hwpx"):
+        return normalize_hwp(str(p), doc_id)
+    return NormalizedDoc(doc_id=doc_id, source_format=ext.lstrip("."), extraction_quality="failed",
+                         notes=[f"unsupported format {ext}"])
+
+
+def iter_corpus_files(raw_dir: str, exts: tuple[str, ...] = (".pdf", ".hwp", ".hwpx", ".doc", ".docx")) -> list[tuple[str, Path]]:
+    """Return (doc_id, path) for every syllabus under raw_dir. doc_id is a slug of
+    the path relative to raw_dir (keeps school + filename, unique across the corpus)."""
+    root = Path(raw_dir)
+    out = []
+    for p in sorted(root.rglob("*")):
+        if p.is_file() and p.suffix.lower() in exts and not p.name.startswith("."):
+            rel = p.relative_to(root)
+            slug = str(rel.with_suffix("")).replace("/", "__").replace(" ", "_")
+            out.append((slug, p))
+    return out

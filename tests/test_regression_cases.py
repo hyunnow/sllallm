@@ -67,6 +67,26 @@ def test_week_only_exam_is_tentative():
     assert "class_schedule" not in _labels(validated)
 
 
+def test_export_timestamp_not_class_schedule():
+    # A single point time like a PDF export stamp ("2:45 PM") must not become a
+    # class time even if the word 수업/class appears nearby.
+    _, validated = _run("수업 자료 출력 2:45 PM", section_title="강의", table_row_label=None)
+    assert "class_schedule" not in _labels(validated)
+
+
+def test_deadline_1159pm_is_assignment_not_class():
+    # "11:59pm" under a "(Class 5)" row label is a deadline, not a class time.
+    out, validated = _run("Thurs Feb 12 (Class 5) 11:59pm", section_title="Schedule", table_row_label="Thurs Feb 12 (Class 5)")
+    assert "class_schedule" not in _labels(validated)
+    assert "assignment_deadline" in _labels(validated)
+
+
+def test_time_range_in_class_row_is_kept():
+    # A genuine range under a "Class Time" row label stays class_schedule.
+    out, _ = _run("10:30-11:45", section_title=None, table_row_label="Class Time")
+    assert out["class_schedule"]["status"] == "present"
+
+
 def test_empty_class_time_not_filled_from_office_hours():
     # class-time row empty; only office hours present -> class_schedule stays empty
     out, _ = _run(

@@ -30,9 +30,17 @@ _POLICY_CUES = ["정책", "규정", "policy", "유의사항", "안내사항", "�
 _CLASS_CUES = ["수업", "강의", "class", "lecture", "강의시간", "수업시간", "정규"]
 
 _DURATION_RE = re.compile(r"\d+\s*분(?:간)?")
-# A genuine time-of-day signal. A weekday ALONE is deliberately NOT enough to
-# call something a class time (precision > recall).
-_HAS_TIME_RE = re.compile(r"\d{1,2}:\d{2}|\d{1,2}\s*시|\d+\s*교시", re.IGNORECASE)
+# The SHAPE of a real class time: a time RANGE or a 교시 (period). A single point
+# time (e.g. a "2:45 PM" export timestamp, or an "11:59pm" deadline) is
+# deliberately NOT a class-time shape — this is what keeps precision high.
+_TIME_RANGE_RE = re.compile(r"(?:\d{1,2}:\d{2}|\d{1,2}\s*시)\s*[~\-–—]\s*(?:\d{1,2}:\d{2}|\d{1,2}\s*시)")
+_PERIOD_RE = re.compile(r"\d*\s*교시")
+# 23:59 / 11:59pm — the classic assignment-deadline instant.
+_DEADLINE_RE = re.compile(r"23:59|11:59\s*pm", re.IGNORECASE)
+
+
+def _is_class_time_shape(text: str) -> bool:
+    return bool(_TIME_RANGE_RE.search(text) or _PERIOD_RE.search(text))
 
 
 def _contains_any(haystack: str, needles: list[str]) -> bool:
@@ -68,24 +76,25 @@ class HeuristicClassifier:
         if _contains_any(ctx, _EXAM_CUES):
             return self._c(Label.EXAM_TIME, 0.85, candidate, "exam context")
 
-        if _contains_any(ctx, _ASSIGN_CUES) or text.strip() in {"23:59", "23:59:59"}:
+        # 23:59 / 11:59pm is a deadline even when a "Class N" row label is nearby.
+        if _contains_any(ctx, _ASSIGN_CUES) or _DEADLINE_RE.search(text):
             return self._c(Label.ASSIGNMENT_DEADLINE, 0.8, candidate, "assignment/deadline context")
 
         # week/plan references (8주차, week 3) with no concrete class time
         if _contains_any(text, _WEEKPLAN_CUES) or _contains_any(ctx, _WEEKPLAN_CUES):
-            if not _HAS_TIME_RE.search(text):
+            if not _is_class_time_shape(text):
                 return self._c(Label.WEEKLY_PLAN, 0.75, candidate, "weekly-plan reference")
 
         if _contains_any(ctx, _POLICY_CUES):
             return self._c(Label.POLICY_TEXT, 0.6, candidate, "policy text")
 
-        # class time: needs a positive class cue AND a real time (not just a
-        # weekday), with no disqualifier. When in doubt, we do NOT pick class.
-        if _HAS_TIME_RE.search(text) and _contains_any(ctx, _CLASS_CUES):
-            return self._c(Label.CLASS_SCHEDULE, 0.9, candidate, "class-time context with clock time")
+        # class time: needs a positive class cue AND a class-time SHAPE (a range
+        # or a 교시 — not a single point time). When in doubt, we do NOT pick class.
+        if _is_class_time_shape(text) and _contains_any(ctx, _CLASS_CUES):
+            return self._c(Label.CLASS_SCHEDULE, 0.9, candidate, "class-time context with time range/period")
 
-        # a bare weekday or clock time with no class context — do NOT guess class.
-        return self._c(Label.UNKNOWN, 0.4, candidate, "insufficient context")
+        # a lone point time, bare weekday, or no class context — do NOT guess class.
+        return self._c(Label.UNKNOWN, 0.4, candidate, "insufficient context / not a class-time shape")
 
     @staticmethod
     def _c(label: Label, conf: float, cand: TimeCandidate, reason: str) -> Classification:

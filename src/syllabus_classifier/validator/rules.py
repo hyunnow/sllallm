@@ -26,6 +26,9 @@ _OFFICE_CUES = [
 _DURATION_RE = re.compile(r"^\s*\d+\s*분(?:간)?\s*$")
 _WEEK_ONLY_RE = re.compile(r"\d+\s*주차|week\s*\d+", re.IGNORECASE)
 _HAS_CLOCK_RE = re.compile(r"\d{1,2}:\d{2}|\d{1,2}\s*시|교시")
+# A real class time is a range or a 교시. A lone point time (export timestamp,
+# deadline instant) must never survive as class_schedule.
+_CLASS_SHAPE_RE = re.compile(r"(?:\d{1,2}:\d{2}|\d{1,2}\s*시)\s*[~\-–—]\s*(?:\d{1,2}:\d{2}|\d{1,2}\s*시)|\d*\s*교시")
 
 
 def has_office_hours_context(candidate: TimeCandidate) -> bool:
@@ -85,6 +88,15 @@ def validate_candidate(
         and not _HAS_CLOCK_RE.search(candidate.candidate_text or "")
     ):
         return reject("Week-only reference has no concrete class time.", Label.WEEKLY_PLAN), rejection
+
+    # Rule 4: class_schedule must have a class-time shape (range/period). A lone
+    # point time (export timestamp, deadline instant) is not a class time. This
+    # also guards the future trained model, not just the heuristic baseline.
+    if (
+        classification.classified_as == Label.CLASS_SCHEDULE.value
+        and not _CLASS_SHAPE_RE.search(candidate.candidate_text or "")
+    ):
+        return reject("Single point time, not a class-time shape (range/period expected).", Label.UNKNOWN), rejection
 
     return classification, None
 
