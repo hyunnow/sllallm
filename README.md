@@ -89,6 +89,20 @@ pip install -e ".[dev]" && pytest        # regression + unit tests
 The smoke test proves the flagship guardrail: the office-hours case is filtered
 out of `class_schedule`, while a real class time is kept.
 
+### Pipeline (Phase 1 → 7)
+
+```bash
+python scripts/01_normalize.py                 # docs -> text/tables (data/normalized)
+python scripts/02_label.py --n 8000 --workers 6  # OpenAI-assisted labels (data/candidates)
+python scripts/03_extract_candidates.py        # inspect candidates + heuristic labels
+python scripts/04_build_dataset.py             # labels -> training examples (dataset.jsonl)
+python scripts/06_split.py                     # leakage-proof group split by doc_id
+
+# Phase 7 — train on Colab (GPU):
+pip install -e ".[train]"
+python scripts/07_train.py --config train.yaml # class-weighted/focal, real-holdout metrics
+```
+
 ## Status
 
 **Phase 0–2 complete.**
