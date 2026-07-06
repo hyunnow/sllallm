@@ -1,0 +1,17 @@
+{"id": "U1", "source": "user", "type": "value_missing", "example": "교수 이름/연락처/수업시간 없음", "mechanism": ["S"], "expected": "해당 필드 null 또는 status:not_specified. hallucination 금지."}
+{"id": "U2", "source": "user", "type": "value_multiple", "example": "교수 여러 명, 강의시간이 기간마다 다름/변경", "mechanism": ["S"], "expected": "배열로. 시간 변경은 기간별 events로 분리(C1)."}
+{"id": "U3", "source": "user", "type": "uninterpretable_without_kb", "example": "학교별 교시 시각 다름 + 여름/겨울 다름", "mechanism": ["KB"], "expected": "교시표 KB (학교,학기종류) 키로 변환."}
+{"id": "U4", "source": "user", "type": "date_notation_variety", "example": "2026.10.27~11.10 / week 3 / 5일차 / 27or29일 / 3월,4월 / 1강,2강", "mechanism": ["KB", "R"], "expected": "absolute는 그대로, relative는 학사일정 KB, uncertain은 needs_review."}
+{"id": "U5", "source": "user", "type": "week_undetermined", "example": "진도만 있고 몇 주차인지 없음", "mechanism": ["S", "R"], "expected": "weekly_plan에 순서만. 날짜/주차 생성 금지. week:null."}
+{"id": "U6", "source": "user", "type": "online_async", "example": "비대면 사이버 강의", "mechanism": ["S"], "expected": "class_schedule.status:async, events 비움."}
+{"id": "C1", "source": "claude", "type": "mid_term_time_change", "example": "전반부 월1교시 / 후반부 수3교시", "mechanism": ["S"], "expected": "events에 valid_from/valid_until로 기간별 분리."}
+{"id": "C2", "source": "claude", "type": "holiday_makeup", "example": "추석 휴강, 개천절 휴강, 보강일", "mechanism": ["KB", "R"], "expected": "반복 수업에서 해당 날짜 제외(EXDATE), 보강일 별도 추가."}
+{"id": "C3", "source": "claude", "type": "theory_lab_split", "example": "이론 월1-2교시 + 실습 수3-4교시", "mechanism": ["S"], "expected": "events 2개, component:theory/lab 각각."}
+{"id": "C4", "source": "claude", "type": "multiple_sections", "example": "분반A 월1교시 / 분반B 화2교시", "mechanism": ["S", "R"], "expected": "sections[]로 분리. 어느 분반인지 불명이면 needs_review."}
+{"id": "C5", "source": "claude", "type": "team_teaching", "example": "1~5주 A교수, 6~10주 B교수", "mechanism": ["S"], "expected": "instructors 배열 + weekly_plan에 담당교수 연결."}
+{"id": "C6", "source": "claude", "type": "contact_obfuscation", "example": "hong[at]univ.ac.kr, 전화만, 카톡ID, LMS 메시지, 이미지 이메일", "mechanism": ["M", "R"], "expected": "채널 분리, 난독화 정규화([at]->@), 이미지화면 needs_review."}
+{"id": "C7", "source": "claude", "type": "exam_not_class", "example": "별도 고사시간, 공통고사기간, 온/오프라인 시험", "mechanism": ["M", "R"], "expected": "시험 시각을 class_schedule로 가져오지 않기. 공통고사는 학사일정 참조."}
+{"id": "C8", "source": "claude", "type": "recurring_deadline", "example": "매주 금요일 23:59 과제", "mechanism": ["S"], "expected": "assignment에 recurrence. 단일 이벤트로 오해 금지."}
+{"id": "C9", "source": "claude", "type": "biweekly", "example": "격주 실습, 홀수주만", "mechanism": ["S", "R"], "expected": "recurrence interval:2 또는 needs_review."}
+{"id": "C10", "source": "claude", "type": "block_intensive", "example": "계절학기 하루 여러 시간, 특정 주 몰아서", "mechanism": ["S"], "expected": "여러 시간 슬롯을 하루에. tentative 아님 주의."}
+{"id": "C11", "source": "claude", "type": "notation_normalization", "example": "날짜/요일/시각/범위 표기 다양", "mechanism": ["R"], "expected": "정규화 레이어에서 통일(§5)."}

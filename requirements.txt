@@ -1,0 +1,10 @@
+# Minimal runtime for the deterministic pipeline (normalize, extract, validate,
+# heuristic baseline, eval, smoke test, tests). Enough to run scripts/00_smoke_test.py.
+pyyaml>=6.0
+
+# Heavier extras are declared in pyproject.toml and installed per phase:
+#   pip install -e ".[extract]"   # Phase 1  (pdfplumber, pdf2image)
+#   pip install -e ".[ocr]"       # Phase 1  (OCR for scanned PDFs)
+#   pip install -e ".[label]"     # Phase 2  (openai)
+#   pip install -e ".[train]"     # Phase 7  (torch, transformers, scikit-learn)
+#   pip install -e ".[dev]"       # tests    (pytest)

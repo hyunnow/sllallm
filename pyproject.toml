@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "syllabus-classifier"
+version = "0.0.1"
+description = "Syllabus time-candidate classifier — keep office hours, exams, and deadlines out of class_schedule."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# document extraction (Phase 1)
+extract = [
+    "pdfplumber>=0.11",
+    "pdf2image>=1.17",
+]
+# OCR for scanned PDFs / images (engine TBD — see README open question)
+ocr = [
+    "pytesseract>=0.3.10",
+    "Pillow>=10.0",
+]
+# LLM-assisted labeling (Phase 2) — OpenAI key available
+label = [
+    "openai>=1.30",
+]
+# model training (Phase 7)
+train = [
+    "torch>=2.2",
+    "transformers>=4.40",
+    "scikit-learn>=1.4",
+    "numpy>=1.26",
+    "pandas>=2.2",
+]
+dev = [
+    "pytest>=7.4",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"

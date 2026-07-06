@@ -1,0 +1,40 @@
+# Data paths and split configuration.
+#
+# raw_dir: where the ~1026 original syllabi live. Points at the on-disk corpus
+# ("실라버스 모음 폴더"), which is git-ignored (privacy + size). Change if the
+# corpus moves.
+paths:
+  raw_dir: "실라버스 모음 폴더"
+  normalized_dir: data/normalized
+  canonical_dir: data/canonical
+  candidates_dir: data/candidates
+  augmented_dir: data/augmented
+  splits_dir: data/splits
+  edge_case_registry: data/edge_cases/registry.jsonl
+
+# Rough share per format (fill in once known). Answered so far: text PDF + scan PDF.
+formats:
+  pdf_text: null   # e.g. 0.7
+  pdf_scan: null   # e.g. 0.3
+
+# How many schools / semesters the syllabi span — drives KB coverage and the
+# needs_review rate (v2 §9.2).
+# Corpus: ~1026 files, ~99% PDF (1015), 8 hwp, 2 doc, 1 docx.
+# Institutions: KAIST, NYU Stern, UNIST, YISS, Hanyang(302), KOCW(aggregator,
+# many schools), 가천대(Gachon), plus a dated batch (7_6). KOCW spans many
+# schools, so KB coverage (timetables/calendars) is a substantial effort.
+provenance:
+  num_schools: 8            # + KOCW aggregates many more
+  num_terms: null           # TBD from document metadata
+  language: mixed           # korean + english (NYU Stern is English)
+  institutions: ["KAIST", "NYU Stern", "UNIST", "YISS", "Hanyang", "KOCW", "Gachon", "7_6"]
+
+# Phase 6 — group split by document id so no document's candidates or their
+# augmentations straddle train/test (leakage would inflate performance).
+split:
+  group_key: doc_id
+  train_ratio: 0.70
+  val_ratio: 0.15
+  test_ratio: 0.15        # REAL HOLDOUT — no augmentation; judge performance here only
+  seed: 42
+  augment_train_only: true

@@ -1,0 +1,30 @@
+# Model + training hyperparameters (Phase 7).
+seed: 42
+
+model:
+  # 한/영 혼합 → 다국어/한국어 인코더. 소규모 실험은 klue/roberta-base로 시작,
+  # 한영 혼합 강건성은 xlm-roberta-base와 비교.
+  encoder: klue/roberta-base       # alt: xlm-roberta-base, klue/bert-base
+  max_length: 256
+  num_labels: 8
+
+# candidate + where-it-was-found + surrounding text
+input_format: "{candidate_text} [SEP] {section_title} / {table_row_label} [SEP] {nearby_text}"
+
+training:
+  epochs: 5
+  batch_size: 32
+  lr: 2.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  # precision > recall: a class_schedule false positive is catastrophic, so make
+  # the model conservative about that one class.
+  loss: focal                      # focal | weighted_ce | ce
+  focal_gamma: 2.0
+  class_weights: auto
+  # only assign class_schedule above this confidence; when unsure, don't.
+  class_schedule_confidence_threshold: 0.90
+
+eval:
+  primary_metric: class_schedule_precision   # target 0.98~0.99+
+  report_confusion_matrix: true

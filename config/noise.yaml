@@ -1,0 +1,32 @@
+# Phase 5 augmentation. All augmentation preserves the label; only surface text
+# changes. Probabilities are tunable here so the model does not have to learn
+# surface variety it can be handed cheaply.
+seed: 42
+
+# (A) surface augmentation of real candidates
+surface:
+  ocr_confusion:          # 0<->O, l<->1, 한글 자모 혼동
+    enabled: true
+    prob: 0.15            # per eligible character
+  char_drop_insert:
+    enabled: true
+    prob: 0.03
+  whitespace_table_break: # flatten tables, merge columns, insert line breaks
+    enabled: true
+    prob: 0.20
+  label_synonym_swap:     # 면담시간 <-> 상담시간 <-> Office Hours <-> 오피스아워
+    enabled: true
+    prob: 0.50
+  time_format_swap:       # 22:00~23:00 <-> 22:00-23:00 <-> 오후 10시~11시 <-> 22시~23시
+    enabled: true
+    prob: 0.50
+  context_shuffle:
+    enabled: true
+    prob: 0.20
+  variants_per_candidate: 3
+
+# (B) reverse synthesis: canonical -> fake doc -> noise -> re-extract
+reverse_synthesis:
+  enabled: true
+  hard_negative_multiplier: 5      # oversample confusable cases (spec §5 table)
+  office_hours_variants_min: 50    # 대표 오류 케이스 최소 변형 수 (classifier spec §5)

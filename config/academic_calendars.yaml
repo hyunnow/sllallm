@@ -1,0 +1,22 @@
+# KB 2 — academic calendar: term start + holidays -> resolve relative dates
+# (week N / N일차 / N강 / N월) to real dates (master spec v2 §2-2).
+#
+# Key = "<school>__<year>_<term>". These are SEED examples.
+#
+# CRITICAL: if a term start is not found here, the resolver returns
+# resolved_date=null and needs_review=true. It NEVER invents a date.
+calendars:
+  university_a__2026_fall:
+    term_start: "2026-09-01"       # week 1 start
+    term_end: "2026-12-18"
+    weeks: 16
+    holidays: ["2026-09-24", "2026-09-25", "2026-10-03", "2026-10-09"]  # 휴강/공휴일
+    makeup_days:
+      "2026-10-03": "2026-12-19"   # 보강일 (optional)
+
+  university_a__2026_spring:
+    term_start: "2026-03-02"
+    term_end: "2026-06-19"
+    weeks: 16
+    holidays: ["2026-03-01", "2026-05-05", "2026-05-25"]
+    makeup_days: {}

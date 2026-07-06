@@ -1,0 +1,44 @@
+# OS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Secrets
+.env
+*.key
+
+# Real syllabus corpus (~1026 files across 8 institutions). NOT committed:
+# contains instructor personal data and would bloat the repo. Use Git LFS or an
+# external store if you ever need it versioned.
+실라버스 모음 폴더/
+
+# Data — the real syllabi and derived artifacts are NOT committed (privacy + size).
+# Keep the directory structure via .gitkeep, ignore the contents.
+data/raw/*
+data/normalized/*
+data/canonical/*
+data/candidates/*
+data/augmented/*
+data/splits/*
+!data/**/.gitkeep
+# The edge-case registry IS tracked (it is source, not data).
+!data/edge_cases/
+!data/edge_cases/registry.jsonl
+
+# Model artifacts / checkpoints
+checkpoints/
+*.ckpt
+*.pt
+runs/
+wandb/
