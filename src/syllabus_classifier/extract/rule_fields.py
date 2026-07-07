@@ -225,6 +225,57 @@ def extract_department(doc) -> Optional[str]:
     return labeled_value(doc, "department")
 
 
+# --- course code (labeled + unlabeled shapes) -----------------------------------
+
+# Real-world code shapes observed in the corpus + user examples:
+#   MTH101001 (미적분학: MTH101001) · PH301 / MSE35401 (KAIST/UNIST) ·
+#   ISM4508-11 (YISS section) · TECH-UB.25.001 (NYU dotted)
+_CODE_SHAPES = [
+    re.compile(r"\b[A-Z]{2,5}-[A-Z]{2}\.\d+(?:\.\d+)?\b"),        # NYU: TECH-UB.25.001
+    re.compile(r"\b[A-Z]{2,4}\s?\d{3,6}(?:-\d{1,3})?\b"),         # MTH101001, PH301, ISM4508-11
+]
+# uppercase+digit tokens that are never course codes
+_CODE_BLOCKLIST = re.compile(r"^(?:COVID|SARS|H\d|ISBN|ISSN|MP\d|A\d|B\d|PC\d|IP\d)", re.I)
+
+
+def find_course_code(text: str) -> Optional[str]:
+    """First plausible course-code token in a string; None if nothing safe."""
+    for pat in _CODE_SHAPES:
+        for m in pat.finditer(text or ""):
+            tok = m.group(0)
+            if not _CODE_BLOCKLIST.match(tok.replace(" ", "")):
+                return tok.replace(" ", "")
+    return None
+
+
+def split_code_from_title(title: str) -> tuple[str, Optional[str]]:
+    """'미적분학: MTH101001' / 'PH301 Quantum Mechanics' -> (clean title, code)."""
+    for pat in _CODE_SHAPES:
+        m = pat.search(title or "")
+        if m and not _CODE_BLOCKLIST.match(m.group(0).replace(" ", "")):
+            cleaned = (title[:m.start()] + " " + title[m.end():])
+            cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" :：()[]-–—/·,\t")
+            return (cleaned or title), m.group(0).replace(" ", "")
+    return title, None
+
+
+def extract_course_code(doc, title_candidates: "list[str] | None" = None) -> Optional[str]:
+    """Priority: 학수번호-labeled value > code embedded in the title > page-1
+    header region (syllabi print the code up top). Never a blocklisted token."""
+    v = labeled_value(doc, "course_code")
+    if v:
+        m = re.search(r"[A-Za-z]{2,6}[-_ ]?\d{2,5}[A-Za-z0-9.\-]*|\d{4,8}", v)
+        if m:
+            return m.group(0).strip()
+    for t in title_candidates or []:
+        code = find_course_code(t)
+        if code:
+            return code
+    if doc.pages:
+        return find_course_code(doc.pages[0].text[:500])
+    return None
+
+
 # --- contacts (regex-first fields) ---------------------------------------------
 
 _OBFUSCATIONS = [
@@ -264,7 +315,8 @@ def extract_phones(doc) -> list[str]:
 def extract_rule_fields(doc) -> dict:
     """One pass over a NormalizedDoc -> flat {field_path: value} for the rule method."""
     school, campus = extract_school_campus(doc)
-    title = labeled_value(doc, "title")
+    raw_title = labeled_value(doc, "title")
+    title, title_code = split_code_from_title(raw_title) if raw_title else (None, None)
     title_ko = title_en = None
     if title:
         if re.search(r"[가-힣]", title):
@@ -281,11 +333,9 @@ def extract_rule_fields(doc) -> dict:
         if credits and credits > 10:      # "학점/시수 3/3" style safety
             credits = None
 
-    code_v = labeled_value(doc, "course_code")
-    course_code = None
-    if code_v:
-        m = re.search(r"[A-Za-z]{2,6}[-_ ]?\d{2,5}[A-Za-z0-9.\-]*|\d{4,8}", code_v)
-        course_code = m.group(0).strip() if m else None
+    course_code = extract_course_code(doc, title_candidates=[raw_title] if raw_title else [])
+    if not course_code:
+        course_code = title_code
 
     emails = extract_emails(doc)
     phones = extract_phones(doc)

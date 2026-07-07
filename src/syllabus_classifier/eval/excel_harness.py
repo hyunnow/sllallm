@@ -20,7 +20,10 @@ from collections import Counter
 from pathlib import Path
 from typing import Optional
 
-FIELDS = ["과목명", "교수", "연락처", "학점", "강의실", "총주차", "수업시간",
+# NOTE: 학수번호 added 2026-07 (user request) — absent from ParserTest.xlsx and
+# the batch-2 workbook (both predate it); loaders return None there, scoring
+# skips it until gold exists. Future review builds include it automatically.
+FIELDS = ["과목명", "학수번호", "교수", "연락처", "학점", "강의실", "총주차", "수업시간",
           "이벤트", "무기한과제", "주차별내용", "대학", "학년도", "학기"]
 METHODS = {"rule": "룰", "llm": "LLM", "hybrid": "하이브리드"}
 GOLD_PENDING_STATUS = "파싱완료(라벨대기)"
@@ -122,6 +125,7 @@ def ours_for_excel_fields(source_text: str, doc_id: str) -> dict[str, object]:
     term = {"summer": "여름", "winter": "겨울"}.get(rule.get("meta.term"), rule.get("meta.term"))
     return {
         "과목명": rule.get("course.title_ko") or rule.get("course.title_en"),
+        "학수번호": rule.get("meta.course_code"),
         "교수": rule.get("instructors.name"),
         "연락처": contact,
         "학점": rule.get("course.credits"),
