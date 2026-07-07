@@ -53,11 +53,59 @@ def print_table(title: str, metrics: dict, methods: list[str]) -> None:
         print(f"{field:10} {risk:4} | " + " | ".join(cells))
 
 
+def build_ours_hybrid(rows: list[dict], cache_path: Path) -> dict:
+    """v6 §2 event hybrid — LLM surface (cached) + our risk gate + table merge.
+    Emits 이벤트 and 무기한과제 only."""
+    from syllabus_classifier.common.env import load_env_key
+    from syllabus_classifier.extract.event_hybrid import (
+        llm_read_events, merge_events, risk_gate, serialize_events,
+    )
+    from syllabus_classifier.extract.field_router import extract_subsystem
+    from syllabus_classifier.extract.normalize_doc import normalize_text_blob
+
+    cache: dict[str, list] = {}
+    if cache_path.exists():
+        for line in cache_path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                d = json.loads(line)
+                cache[d["syllabus_id"]] = d["events"]
+
+    client = None
+    out: dict = {}
+    with open(cache_path, "a", encoding="utf-8") as fh:
+        for r in rows:
+            sid, text = r["syllabus_id"], r["source_text"]
+            if sid not in cache:
+                if client is None:
+                    if not load_env_key():
+                        print("  (no OPENAI_API_KEY — ours_hybrid skipped)")
+                        return {}
+                    from openai import OpenAI
+                    client = OpenAI(timeout=60, max_retries=3)
+                try:
+                    cache[sid] = llm_read_events(text, client)
+                except Exception as e:
+                    print(f"  llm events failed for {sid}: {type(e).__name__}")
+                    cache[sid] = []
+                fh.write(json.dumps({"syllabus_id": sid, "events": cache[sid]}, ensure_ascii=False) + "\n")
+                fh.flush()
+
+            dated, undated = risk_gate(cache[sid], text)
+            sub = extract_subsystem(normalize_text_blob(sid, text))
+            table_evs = [{**e, "kind": "exam"} for e in sub.get("schedule.exams", [])] + \
+                        [{**e, "kind": "assignment"} for e in sub.get("schedule.assignments", [])]
+            merged = merge_events(table_evs, dated)
+            out[(sid, "이벤트")] = serialize_events(merged)
+            out[(sid, "무기한과제")] = " ; ".join(undated) or None
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--xlsx", default="ParserTest.xlsx")
     ap.add_argument("--gold", default="data/gold/gold.jsonl")
     ap.add_argument("--dev-ratio", type=float, default=0.6)
+    ap.add_argument("--no-hybrid", action="store_true", help="skip the LLM event hybrid")
     args = ap.parse_args()
 
     gold_cells = [json.loads(l) for l in Path(args.gold).read_text(encoding="utf-8").splitlines() if l.strip()]
@@ -74,12 +122,17 @@ def main() -> int:
             v = ours.get(f)
             preds["ours"][(sid, f)] = str(v) if v not in (None, "") else None
 
+    methods = ["rule", "llm", "hybrid", "ours"]
+    if not args.no_hybrid:
+        hybrid2 = build_ours_hybrid(rows, Path("data/gold/llm_events_cache.jsonl"))
+        if hybrid2:
+            preds["ours_hybrid"] = hybrid2
+            methods.append("ours_hybrid")
+
     doc_ids = [r["syllabus_id"] for r in rows]
     dev, holdout = split_docs(doc_ids, args.dev_ratio)
     print(f"docs: {len(doc_ids)} (dev {len(dev)} / holdout {len(holdout)}) | "
           f"confirmed gold cells: {len(gold_cells)}")
-
-    methods = ["rule", "llm", "hybrid", "ours"]
     m_dev = compute_metrics(gold_cells, preds, dev)
     m_hold = compute_metrics(gold_cells, preds, holdout)
 
