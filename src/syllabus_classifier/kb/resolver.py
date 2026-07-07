@@ -170,6 +170,75 @@ def resolve_month(month: int, year: Optional[int] = None) -> dict:
     }
 
 
+# --- v7 §2 priority resolvers: in_document > KB > needs_review ---------------
+
+
+def resolve_week_reference(
+    week: int,
+    weekday: Optional[str] = None,
+    *,
+    in_document_date: Optional[str] = None,
+    calendar_key: Optional[str] = None,
+    kb: Optional["KBResolver"] = None,
+) -> ResolvedDate:
+    """Resolve 'Week N' with the v7 §2 priority order.
+
+    1. a date the DOCUMENT itself provides (weekly-plan date column) wins —
+       past documents resolve for free, no calendar needed;
+    2. else the academic-calendar KB (current/upcoming terms only, by policy);
+    3. else stay raw: resolved_date=null + needs_review. Never invent a date.
+    """
+    if in_document_date:
+        return ResolvedDate(resolved_date=in_document_date, resolved_by="in_document")
+    if calendar_key:
+        kb = kb or KBResolver()
+        if calendar_key in kb._calendars and weekday:
+            return kb.resolve_week(calendar_key, week, weekday)
+    return ResolvedDate(
+        needs_review=True,
+        review_reason=f"week {week}: no in-document date and no calendar entry"
+                      + (f" for '{calendar_key}'" if calendar_key else ""),
+    )
+
+
+def resolve_period_reference(
+    period_numbers: list[int],
+    *,
+    in_document_time: Optional[tuple[str, str]] = None,
+    timetable_key: Optional[str] = None,
+    kb: Optional["KBResolver"] = None,
+) -> ResolvedTime:
+    """Resolve '(N)교시' with the v7 §2 priority order (in-document time first,
+    e.g. "2교시(10:00-10:50)"); timetable_key is the (school,campus) KB key."""
+    if in_document_time:
+        return ResolvedTime(start_time=in_document_time[0], end_time=in_document_time[1],
+                            resolved_by="in_document")
+    if timetable_key:
+        kb = kb or KBResolver()
+        table = kb._timetables.get(timetable_key)
+        if table:
+            school, _, term = timetable_key.partition("__")
+            return kb.resolve_period(school, term or "regular", period_numbers) \
+                if term else _resolve_periods_from_table(table, period_numbers, timetable_key)
+    return ResolvedTime(
+        needs_review=True,
+        review_reason=f"periods {period_numbers}: no in-document time and no timetable entry"
+                      + (f" for '{timetable_key}'" if timetable_key else ""),
+    )
+
+
+def _resolve_periods_from_table(table: dict, period_numbers: list[int], key: str) -> ResolvedTime:
+    periods = table.get("periods", {})
+    starts, ends = [], []
+    for n in period_numbers:
+        slot = periods.get(str(n))
+        if not slot:
+            return ResolvedTime(needs_review=True, review_reason=f"period {n} not in timetable '{key}'")
+        starts.append(slot[0])
+        ends.append(slot[1])
+    return ResolvedTime(start_time=min(starts), end_time=max(ends), resolved_by="period_timetable_kb")
+
+
 # module-level convenience wrappers (use the seed configs)
 def resolve_period(school: str, term_type: str, period_numbers: list[int]) -> ResolvedTime:
     return KBResolver().resolve_period(school, term_type, period_numbers)

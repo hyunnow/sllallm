@@ -105,12 +105,34 @@ def extract_subsystem(doc, classifier=None) -> dict:
     else:
         status = "not_specified"
 
+    # Phase 4: the weekly-plan table — the main home of exams/assignments (v6 §0).
+    from .table_plan import parse_weekly_plan
+
+    plan = parse_weekly_plan(doc)
+    seen_keys = {(e.get("type"), e["raw_reference"]) for e in exams} | \
+                {(None, a["raw_reference"]) for a in assignments}
+    for ev in plan.events:
+        key = (ev.get("type"), ev["raw_reference"])
+        if key in seen_keys:
+            continue
+        entry = {k: ev[k] for k in ("title", "type", "raw_reference", "date_kind",
+                                    "resolved_date", "resolved_by", "needs_review") if k in ev}
+        (exams if ev["kind"] == "exam" else assignments).append(entry)
+
     return {
         "meeting.status": status,
         "meeting.events": class_events if status == "present" else [],
         "instructors.office_hours": office_hours,
         "schedule.exams": exams,
         "schedule.assignments": assignments,
+        "schedule.weekly_plan": [
+            {"week": r.week, "date_range": r.date_range, "topic": r.topic,
+             "textbook_range": r.textbook_range, "remarks": r.remarks}
+            for r in plan.rows
+        ],
+        "schedule.total_weeks": plan.total_weeks,
+        "schedule.plan_needs_review": plan.needs_review,
+        "schedule.plan_issues": plan.issues,
     }
 
 

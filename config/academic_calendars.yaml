@@ -1,22 +1,37 @@
-# KB 2 — academic calendar: term start + holidays -> resolve relative dates
-# (week N / N일차 / N강 / N월) to real dates (master spec v2 §2-2).
+# KB 2 — academic calendar: term start + holidays -> resolve Week N to dates.
 #
-# Key = "<school>__<year>_<term>". These are SEED examples.
+# v7 §3 policy: CURRENT + UPCOMING terms ONLY, top schools only. Past terms
+# (2005~2024) are intentionally left empty — in-document dates resolve them for
+# free (v7 §2 priority 1) and everything else is needs_review BY DESIGN.
+# Keep this file small; refresh it each term, do not backfill history.
 #
-# CRITICAL: if a term start is not found here, the resolver returns
-# resolved_date=null and needs_review=true. It NEVER invents a date.
+# CRITICAL invariant: a missing entry means resolved_date stays null +
+# needs_review. The resolver NEVER invents a date (SYL-032).
+#
+# HUMAN TODO: fill term_start/term_end/holidays for the schools you serve,
+# for 2026-여름 (current) and 2026-2학기 (upcoming) only.
 calendars:
-  university_a__2026_fall:
-    term_start: "2026-09-01"       # week 1 start
+  yonsei__2026_summer:
+    term_start: null
+    term_end: null
+    holidays: []
+  yonsei__2026_2:
+    term_start: null
+    term_end: null
+    holidays: []
+  hanyang__2026_2:
+    term_start: null
+    term_end: null
+    holidays: []
+  korea__2026_2:
+    term_start: null
+    term_end: null
+    holidays: []
+
+  # --- format example (synthetic values; replace or remove) ---
+  _example__2026_2:
+    term_start: "2026-09-01"
     term_end: "2026-12-18"
     weeks: 16
-    holidays: ["2026-09-24", "2026-09-25", "2026-10-03", "2026-10-09"]  # 휴강/공휴일
-    makeup_days:
-      "2026-10-03": "2026-12-19"   # 보강일 (optional)
-
-  university_a__2026_spring:
-    term_start: "2026-03-02"
-    term_end: "2026-06-19"
-    weeks: 16
-    holidays: ["2026-03-01", "2026-05-05", "2026-05-25"]
+    holidays: ["2026-10-03", "2026-10-09"]
     makeup_days: {}

@@ -139,13 +139,34 @@ def test_3_10_async_course():
     assert rec["meeting"]["events"] == []
 
 
-# --- deferred failure classes (need later phases) --------------------------------
+# --- 3-3: 교시 -> 시각 is KB-only; out-of-KB never yields an invented time ---------
 
-@pytest.mark.skip(reason="Phase 5: period->time via (school,campus,term) KB wiring")
 def test_3_3_period_resolution_is_kb_only():
-    ...
+    from syllabus_classifier.kb.resolver import KBResolver, resolve_period_reference
+
+    kb = KBResolver(timetables={"yonsei_wonju": {"periods": {"5": ["13:00", "13:50"],
+                                                             "6": ["14:00", "14:50"]}}},
+                    calendars={})
+    # in-KB campus resolves deterministically (no per-method divergence possible)
+    ok = resolve_period_reference([5, 6], timetable_key="yonsei_wonju", kb=kb)
+    assert (ok.start_time, ok.end_time) == ("13:00", "14:50")
+    # out-of-KB school: no time is invented — needs_review instead (SYL-022/024/028)
+    miss = resolve_period_reference([5, 6], timetable_key="unknown_univ", kb=kb)
+    assert miss.start_time is None and miss.needs_review
 
 
-@pytest.mark.skip(reason="Phase 4: weekly-plan table extraction with column-shift detection")
+# --- 3-7: column shift / week continuity -> abstain, never emit shifted rows -----
+
 def test_3_7_column_shift_and_week_continuity():
-    ...
+    from syllabus_classifier.extract.normalize_doc import Table
+    from syllabus_classifier.extract.table_plan import parse_weekly_plan
+
+    shifted = Table(header=["주차", "수업내용"],
+                    rows=[["1", "Week 2"], ["2", "3/4-3/8"], ["3", "file3.pdf"], ["4", "ok"]])
+    plan = parse_weekly_plan(doc_from("", tables=[shifted]))
+    assert plan.needs_review and "column_shift" in plan.issues and plan.rows == []
+
+    gapped = Table(header=["주차", "수업내용"],
+                   rows=[["1", "a"], ["2", "b"], ["5", "c"], ["6", "d"]])
+    plan2 = parse_weekly_plan(doc_from("", tables=[gapped]))
+    assert plan2.needs_review and "week_gap" in plan2.issues and plan2.total_weeks is None

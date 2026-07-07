@@ -20,7 +20,7 @@ from ..record.schema import empty_record, instructor_entry
 # (and rule_llm / llm once Phase 3 lands).
 _SUBSYSTEM_FIELDS = {
     "meeting.status", "meeting.events", "instructors.office_hours",
-    "schedule.exams", "schedule.assignments",
+    "schedule.exams", "schedule.assignments", "schedule.weekly_plan",
 }
 _METHOD_ORDER = ("rule_llm", "rule", "llm")   # first non-null wins for non-subsystem fields
 
@@ -90,6 +90,13 @@ def build_record(doc, outputs: dict[str, dict]) -> dict:
 
     for f in ("attendance_policy", "disability_support", "learning_ethics"):
         rec["admin"][f] = take(f"admin.{f}")
+
+    # abstain-on-uncertain (v6 §1-2): a shifted/discontinuous plan table emits
+    # nothing but must be visible as needs_review, not silently absent.
+    sub = outputs.get("subsystem", {})
+    if sub.get("schedule.plan_needs_review"):
+        _flag(rec, "schedule.weekly_plan",
+              f"plan table alignment issues: {', '.join(sub.get('schedule.plan_issues', []))}")
 
     _cross_validate(rec)
     return rec

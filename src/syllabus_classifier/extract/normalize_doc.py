@@ -104,11 +104,20 @@ class NormalizedDoc:
 # --- text blob (used by tests/smoke and already-extracted text) ------------
 def normalize_text_blob(doc_id: str, text: str) -> NormalizedDoc:
     """Wrap flat text as a NormalizedDoc. Flattened-table lines that use pipe
-    delimiters ("CREDIT | 3 | INSTRUCTOR | Kelly Jeong") are reconstructed as a
-    pseudo-table so the label→next-cell extraction path fires on them — plain
-    text keeps only the colon-style `label: value` fallback otherwise."""
-    rows = [[c.strip() for c in ln.split("|")] for ln in text.splitlines() if "|" in ln]
-    tables = [Table(header=[], rows=rows)] if rows else []
+    delimiters ("CREDIT | 3 | INSTRUCTOR | Kelly Jeong") are reconstructed as
+    pseudo-tables so the label→next-cell extraction path fires on them.
+
+    CONSECUTIVE pipe lines form one table each (runs split at non-pipe lines):
+    a meta block and a weekly-plan block become separate tables, which lets the
+    weekly-plan detector see the plan instead of one giant mixed table."""
+    tables: list[Table] = []
+    run: list[list[str]] = []
+    for ln in text.splitlines() + [""]:
+        if "|" in ln:
+            run.append([c.strip() for c in ln.split("|")])
+        elif run:
+            tables.append(Table(header=[], rows=run))
+            run = []
     return NormalizedDoc(doc_id=doc_id, pages=[Page(page_no=1, text=text, tables=tables)],
                          source_format="text")
 

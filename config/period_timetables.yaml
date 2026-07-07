@@ -1,36 +1,29 @@
-# KB 1 — period number -> clock time (master spec v2 §2-1).
+# KB 1 — period number -> clock time. v7 §3 strategy: fill BROADLY but only
+# where it has leverage. Key = "<school>" or "<school>_<campus>" (campus matters:
+# 원주 differs from 서울, SYL-024).
 #
-# Key = "<school>__<term_type>". Seasonal terms (summer/winter) have DIFFERENT
-# period clock times, so they must be separate keys even for the same school.
+# MEASURED (2026-07, corpus 1026 docs): only 7 docs (0.7%) use 교시 notation at
+# all — the schools below cover 100% of them. Fill THESE five and stop; the
+# long tail resolves as needs_review by design (v7 §1, §4).
 #
-# These are SEED examples. Replace/extend with the real timetables for the
-# schools in your data. A period that is not found here -> needs_review
-# (never guessed) in the resolver.
+# HUMAN TODO (est. <1h): fill `periods` from each school's official timetable.
+# Format per entry:  "1": ["09:00", "09:50"]
 timetables:
-  university_a__regular:
+  yonsei_seoul:      # 연세대 (신촌/국제 — YISS docs)
+    periods: {}
+  konkuk:            # 건국대
+    periods: {}
+  ewha:              # 이화여대
+    periods: {}
+  hongik:            # 홍익대
+    periods: {}
+  dongguk:           # 동국대
+    periods: {}
+
+  # --- format example (synthetic values; replace or remove) ---
+  _example__regular:
     period_length_min: 50
     periods:
       "1": ["09:00", "09:50"]
       "2": ["10:00", "10:50"]
       "3": ["11:00", "11:50"]
-      "4": ["12:00", "12:50"]
-      "5": ["13:00", "13:50"]
-      "6": ["14:00", "14:50"]
-      "7": ["15:00", "15:50"]
-      "8": ["16:00", "16:50"]
-      "9": ["17:00", "17:50"]
-
-  university_a__summer:            # same school, seasonal term -> different times
-    period_length_min: 100
-    periods:
-      "1": ["09:00", "10:40"]
-      "2": ["10:50", "12:30"]
-      "3": ["13:30", "15:10"]
-
-  university_b__regular:           # 75-minute periods, different start times
-    period_length_min: 75
-    periods:
-      "1": ["09:00", "10:15"]
-      "2": ["10:30", "11:45"]
-      "3": ["12:00", "13:15"]
-      "4": ["13:30", "14:45"]

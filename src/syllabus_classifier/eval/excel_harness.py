@@ -111,6 +111,12 @@ def ours_for_excel_fields(source_text: str, doc_id: str) -> dict[str, object]:
         evs = sub.get("meeting.events") or []
         return " ; ".join(e["raw"] for e in evs) or None
 
+    def weekly_plan_serialized():
+        rows = sub.get("schedule.weekly_plan") or []
+        parts = [f"Week {r['week']}: {r['topic']}" for r in rows
+                 if r.get("week") is not None and (r.get("topic") or "").strip()]
+        return " ; ".join(parts) or None
+
     contact = " ; ".join(v for v in (rule.get("instructors.email"), rule.get("instructors.phone")) if v) or None
     # our internal term values -> the Excel notation {1, 2, 여름, 겨울}
     term = {"summer": "여름", "winter": "겨울"}.get(rule.get("meta.term"), rule.get("meta.term"))
@@ -120,11 +126,11 @@ def ours_for_excel_fields(source_text: str, doc_id: str) -> dict[str, object]:
         "연락처": contact,
         "학점": rule.get("course.credits"),
         "강의실": rule.get("meeting.location"),
-        "총주차": None,                    # not implemented yet (Phase 4 table work)
+        "총주차": sub.get("schedule.total_weeks"),
         "수업시간": class_time(),
         "이벤트": events_serialized(),
         "무기한과제": None,                 # undated assignments not captured yet
-        "주차별내용": None,                 # Phase 4 weekly-plan table
+        "주차별내용": weekly_plan_serialized(),
         "대학": rule.get("meta.school"),
         "학년도": rule.get("meta.academic_year"),
         "학기": term,
