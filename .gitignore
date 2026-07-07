@@ -52,3 +52,6 @@ data/records/
 
 # gold review artifacts (real syllabus text / PII) — local only (v5 §2)
 data/gold/
+
+# batch-2 source files for review (real syllabi) — local only
+b-2/
