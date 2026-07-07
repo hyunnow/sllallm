@@ -139,6 +139,10 @@ def labeled_value(doc, field: str, *, cut: bool = True) -> Optional[str]:
 
 _HAKNYEONDO = re.compile(r"(\d{4})\s*학년도")
 _YEAR_TERM = re.compile(r"(\d{4})\s*년?[\s\-./]*([12])\s*학기")
+# English evidence shapes: the year must sit NEXT TO a term word — still never a
+# bare year (§3-1). "Spring 2026" / "2026 SUMMER (SCHOOL/SESSION/…)" both ways.
+_EN_TERM_YEAR = re.compile(r"\b(spring|summer|fall|autumn|winter)\s*[,\s]\s*(20\d{2})\b", re.I)
+_EN_YEAR_TERM = re.compile(r"\b(20\d{2})\b[^\n]{0,40}?\b(spring|summer|fall|autumn|winter)\b", re.I)
 _TERM_ONLY = re.compile(r"([12])\s*학기|여름\s*(?:계절)?학기|겨울\s*(?:계절)?학기|summer|winter|spring|fall", re.IGNORECASE)
 _FULL_DATE = re.compile(r"\d{4}\s*[.\-/]\s*\d{1,2}\s*[.\-/]\s*\d{1,2}")
 
@@ -152,6 +156,12 @@ def extract_academic_year(doc) -> Optional[int]:
         return int(m.group(1))
     m = _YEAR_TERM.search(text)
     if m:
+        return int(m.group(1))
+    m = _EN_TERM_YEAR.search(text)
+    if m:
+        return int(m.group(2))
+    m = _EN_YEAR_TERM.search(text)
+    if m and not _FULL_DATE.search(m.group(0)):
         return int(m.group(1))
     v = labeled_value(doc, "academic_year")
     if v:

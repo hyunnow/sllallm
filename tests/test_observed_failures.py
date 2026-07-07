@@ -31,6 +31,14 @@ def test_3_1_print_date_alone_is_not_a_year():
     assert extract_academic_year(d) is None
 
 
+def test_3_1_english_term_adjacent_year_counts():
+    # evidence-based English shapes — the year sits next to a term word
+    assert extract_academic_year(doc_from("2026 YONSEI INTERNATIONAL SUMMER SCHOOL")) == 2026
+    assert extract_academic_year(doc_from("Course Syllabus — Spring 2025, Section 01")) == 2025
+    # a bare year with no term word nearby is still NOT evidence
+    assert extract_academic_year(doc_from("Copyright 2024 University Press. All rights reserved.")) is None
+
+
 # --- 3-2: school vs department -------------------------------------------------
 
 def test_3_2_department_never_becomes_school():
