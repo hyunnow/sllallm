@@ -70,7 +70,12 @@ def load_rows(path: "str | Path" = "ParserTest.xlsx") -> list[dict]:
 
 def _norm(s: str) -> str:
     s = re.sub(r"\s+", " ", str(s)).strip().lower()
-    return re.sub(r"\s*([;|~:])\s*", r"\1", s)   # spacing around separators is not a difference
+    s = re.sub(r"[–—]", "-", s)                  # en/em dashes == hyphen
+    s = re.sub(r"\s*([;|~:])\s*", r"\1", s)      # spacing around separators is not a difference
+    # numeric surface: "3.0" == "3" (credits/weeks written either way)
+    if re.fullmatch(r"\d+\.0+", s):
+        s = s.split(".")[0]
+    return s
 
 
 def exact_ok(pred: Optional[str], gold: Optional[str]) -> Optional[bool]:
@@ -78,6 +83,49 @@ def exact_ok(pred: Optional[str], gold: Optional[str]) -> Optional[bool]:
     if not gold or not pred:
         return None
     return _norm(pred) == _norm(gold)
+
+
+def ours_for_excel_fields(source_text: str, doc_id: str) -> dict[str, object]:
+    """Run OUR rule+subsystem extractor on raw text and map to the 13 Excel
+    fields (shared by the coverage comparison and the method comparison)."""
+    from ..extract.field_router import route_document
+    from ..extract.normalize_doc import normalize_text_blob
+
+    doc = normalize_text_blob(doc_id, source_text)
+    out = route_document(doc)
+    rule, sub = out.get("rule", {}), out.get("subsystem", {})
+
+    def events_serialized():
+        evs = (sub.get("schedule.exams") or []) + (sub.get("schedule.assignments") or [])
+        return " ; ".join(
+            f"{e.get('type') or e.get('title') or '?'} | {e['raw_reference']} | {e['date_kind']}"
+            for e in evs
+        ) or None
+
+    def class_time():
+        if rule.get("meeting.raw_time"):
+            return rule["meeting.raw_time"]
+        evs = sub.get("meeting.events") or []
+        return " ; ".join(e["raw"] for e in evs) or None
+
+    contact = " ; ".join(v for v in (rule.get("instructors.email"), rule.get("instructors.phone")) if v) or None
+    # our internal term values -> the Excel notation {1, 2, 여름, 겨울}
+    term = {"summer": "여름", "winter": "겨울"}.get(rule.get("meta.term"), rule.get("meta.term"))
+    return {
+        "과목명": rule.get("course.title_ko") or rule.get("course.title_en"),
+        "교수": rule.get("instructors.name"),
+        "연락처": contact,
+        "학점": rule.get("course.credits"),
+        "강의실": rule.get("meeting.location"),
+        "총주차": None,                    # not implemented yet (Phase 4 table work)
+        "수업시간": class_time(),
+        "이벤트": events_serialized(),
+        "무기한과제": None,                 # undated assignments not captured yet
+        "주차별내용": None,                 # Phase 4 weekly-plan table
+        "대학": rule.get("meta.school"),
+        "학년도": rule.get("meta.academic_year"),
+        "학기": term,
+    }
 
 
 def score_rows(rows: list[dict]) -> dict:

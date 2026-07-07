@@ -17,46 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from syllabus_classifier.eval.excel_harness import FIELDS, load_rows
-from syllabus_classifier.extract.field_router import route_document
-from syllabus_classifier.extract.normalize_doc import normalize_text_blob
-
-
-def ours_for_excel_fields(source_text: str, doc_id: str) -> dict[str, object]:
-    """Run our rule+subsystem on the raw text and map to the 13 Excel fields."""
-    doc = normalize_text_blob(doc_id, source_text)
-    out = route_document(doc)
-    rule, sub = out.get("rule", {}), out.get("subsystem", {})
-
-    def events_serialized():
-        evs = (sub.get("schedule.exams") or []) + (sub.get("schedule.assignments") or [])
-        return " ; ".join(
-            f"{e.get('type') or e.get('title') or '?'} | {e['raw_reference']} | {e['date_kind']}"
-            for e in evs
-        ) or None
-
-    def class_time():
-        if rule.get("meeting.raw_time"):
-            return rule["meeting.raw_time"]
-        evs = sub.get("meeting.events") or []
-        return " ; ".join(e["raw"] for e in evs) or None
-
-    contact = " ; ".join(v for v in (rule.get("instructors.email"), rule.get("instructors.phone")) if v) or None
-    return {
-        "과목명": rule.get("course.title_ko") or rule.get("course.title_en"),
-        "교수": rule.get("instructors.name"),
-        "연락처": contact,
-        "학점": rule.get("course.credits"),
-        "강의실": rule.get("meeting.location"),
-        "총주차": None,                    # not implemented yet (Phase 4 table work)
-        "수업시간": class_time(),
-        "이벤트": events_serialized(),
-        "무기한과제": None,                 # undated assignments not captured yet
-        "주차별내용": None,                 # Phase 4 weekly-plan table
-        "대학": rule.get("meta.school"),
-        "학년도": rule.get("meta.academic_year"),
-        "학기": rule.get("meta.term"),
-    }
+from syllabus_classifier.eval.excel_harness import FIELDS, load_rows, ours_for_excel_fields
 
 
 def main() -> int:
