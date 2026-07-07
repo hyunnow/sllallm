@@ -17,7 +17,10 @@ Outputs (all git-ignored, data/gold/):
   drafts.jsonl       ALL drafts incl. hidden blind ones (for the ingest metrics)
 
 Usage:
+  # batch 1 — the 37 Excel syllabi:
   python scripts/12_gold_review_build.py [--xlsx ParserTest.xlsx] [--blind 0.15]
+  # batch 2+ — expand gold over the normalized corpus (v5 §4-3: 37 is a start):
+  python scripts/12_gold_review_build.py --source corpus --n 40 --out-prefix batch2
 """
 from __future__ import annotations
 
@@ -104,9 +107,43 @@ def draft_one(client, model: str, row: dict) -> dict:
     return {f: (str(data[f]).strip() if data.get(f) not in (None, "", []) else None) for f in FIELDS}
 
 
+def corpus_rows(n: int, seed: int) -> list[dict]:
+    """Sample normalized corpus docs (stratified by school folder) as review rows.
+    Skips docs with no usable text (needs_ocr/failed). syllabus_id = B2-### with
+    the real doc_id kept alongside for later joins."""
+    import json as _json
+    from collections import defaultdict
+
+    from syllabus_classifier.common.config import load_config, resolve_path
+    from syllabus_classifier.extract.normalize_doc import NormalizedDoc
+
+    norm_dir = resolve_path(load_config("data.yaml")["paths"]["normalized_dir"])
+    by_school = defaultdict(list)
+    for fp in sorted(norm_dir.glob("*.json")):
+        doc = NormalizedDoc.from_dict(_json.loads(fp.read_text(encoding="utf-8")))
+        text = doc.full_text.strip()
+        if doc.extraction_quality in ("failed", "needs_ocr") or len(text) < 200:
+            continue
+        by_school[doc.doc_id.split("__", 1)[0]].append((doc.doc_id, text))
+
+    rng = random.Random(seed)
+    per = max(1, -(-n // max(len(by_school), 1)))
+    picked = []
+    for school in sorted(by_school):
+        docs = by_school[school]
+        picked.extend(rng.sample(docs, min(per, len(docs))))
+    rng.shuffle(picked)
+    picked = picked[:n]
+    return [{"syllabus_id": f"B2-{i+1:03d}", "doc_id": doc_id, "source_text": text}
+            for i, (doc_id, text) in enumerate(picked)]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--source", choices=["excel", "corpus"], default="excel")
     ap.add_argument("--xlsx", default="ParserTest.xlsx")
+    ap.add_argument("--n", type=int, default=40, help="corpus docs to sample (--source corpus)")
+    ap.add_argument("--out-prefix", default="", help="suffix for output files (e.g. batch2)")
     ap.add_argument("--blind", type=float, default=0.15)
     ap.add_argument("--model", default="gpt-4o-mini")
     ap.add_argument("--workers", type=int, default=6)
@@ -119,7 +156,10 @@ def main() -> int:
     from openai import OpenAI
     client = OpenAI(timeout=60, max_retries=3)
 
-    rows = [r for r in load_rows(args.xlsx) if r["source_text"]]
+    if args.source == "corpus":
+        rows = corpus_rows(args.n, args.seed)
+    else:
+        rows = [r for r in load_rows(args.xlsx) if r["source_text"]]
 
     drafts: dict[str, dict] = {}
     with cf.ThreadPoolExecutor(max_workers=args.workers) as ex:
@@ -152,9 +192,11 @@ def main() -> int:
 
     out_dir = Path("data/gold")
     out_dir.mkdir(parents=True, exist_ok=True)
-    with open(out_dir / "drafts.jsonl", "w", encoding="utf-8") as f:
+    suffix = f"_{args.out_prefix}" if args.out_prefix else ""
+    with open(out_dir / f"drafts{suffix}.jsonl", "w", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps({"syllabus_id": r["syllabus_id"],
+                                "doc_id": r.get("doc_id"),
                                 "blind": r["syllabus_id"] in blind_ids,
                                 "draft": drafts.get(r["syllabus_id"], {})}, ensure_ascii=False) + "\n")
 
@@ -204,15 +246,16 @@ def main() -> int:
     ws.freeze_panes = "A2"
 
     src = wb.create_sheet("원문")
-    src.append(["syllabus_id", "원문텍스트"])
+    src.append(["syllabus_id", "doc_id", "원문텍스트"])
     for r in rows:
-        src.append([r["syllabus_id"], r["source_text"]])
-        src.cell(row=src.max_row, column=2).alignment = Alignment(wrap_text=True, vertical="top")
+        src.append([r["syllabus_id"], r.get("doc_id") or "", r["source_text"]])
+        src.cell(row=src.max_row, column=3).alignment = Alignment(wrap_text=True, vertical="top")
     src.column_dimensions["A"].width = 12
-    src.column_dimensions["B"].width = 140
+    src.column_dimensions["B"].width = 26
+    src.column_dimensions["C"].width = 140
     src.freeze_panes = "A2"
 
-    path = out_dir / "gold_review.xlsx"
+    path = out_dir / f"gold_review{suffix}.xlsx"
     wb.save(path)
     print(f"wrote {path}  (검수 {len(rows)*len(FIELDS)} rows; 원문 {len(rows)}; drafts hidden for blind docs)")
     return 0
