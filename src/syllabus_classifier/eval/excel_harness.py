@@ -96,11 +96,14 @@ def ours_for_excel_fields(source_text: str, doc_id: str) -> dict[str, object]:
     rule, sub = out.get("rule", {}), out.get("subsystem", {})
 
     def events_serialized():
-        evs = (sub.get("schedule.exams") or []) + (sub.get("schedule.assignments") or [])
-        return " ; ".join(
-            f"{e.get('type') or e.get('title') or '?'} | {e['raw_reference']} | {e['date_kind']}"
-            for e in evs
-        ) or None
+        # 4-part contract per the 읽어보기 notation:
+        #   제목 | 타입(exam/assignment/other) | 날짜(raw) | 날짜종류
+        parts = []
+        for kind, key in (("exam", "schedule.exams"), ("assignment", "schedule.assignments")):
+            for e in sub.get(key) or []:
+                title = e.get("title") or "?"
+                parts.append(f"{title} | {kind} | {e['raw_reference']} | {e['date_kind']}")
+        return " ; ".join(parts) or None
 
     def class_time():
         if rule.get("meeting.raw_time"):

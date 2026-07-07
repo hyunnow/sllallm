@@ -24,6 +24,7 @@ from syllabus_classifier.eval.excel_harness import FIELDS, load_rows, ours_for_e
 from syllabus_classifier.eval.method_compare import (
     HIGH_RISK_FIELDS,
     compute_metrics,
+    event_partial_stats,
     pick_winner,
     split_docs,
 )
@@ -99,7 +100,17 @@ def main() -> int:
         risk = " [HIGH-RISK: fabrication-first]" if field in HIGH_RISK_FIELDS else ""
         print(f"  {field:10} -> {w['provisional_winner']:6} (dev n={w['dev_n']}, out={w['dev_n_output']}){risk} | {hold_s}")
 
+    # 이벤트 세부 — event-level partial diagnostics (all confirmed docs; not a winner input)
+    ev = event_partial_stats(gold_cells, preds)
+    print("\n=== 이벤트 event-level diagnostics (all docs; parts matched after alignment) ===")
+    print(f"{'method':7} {'gold':>5} {'pred':>5} {'exact':>6} | {'title':>5} {'type':>5} {'date':>5} {'kind':>5}")
+    for m in methods:
+        s = ev[m]
+        print(f"{m:7} {s['gold_events']:>5} {s['pred_events']:>5} {s['exact']:>6} | "
+              f"{s['title']:>5} {s['type']:>5} {s['date']:>5} {s['date_kind']:>5}")
+
     report = {"dev": m_dev, "holdout": m_hold, "winners": winners,
+              "event_partial": ev,
               "n_docs": len(doc_ids), "n_gold_cells": len(gold_cells)}
     out = Path("data/gold/method_report.json")
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

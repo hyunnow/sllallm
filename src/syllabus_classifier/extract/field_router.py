@@ -20,8 +20,57 @@ from .rule_fields import extract_rule_fields, labeled_value
 
 _TBA = re.compile(r"\bTBA\b|미정|추후\s*(?:공지|안내)", re.IGNORECASE)
 _ASYNC = re.compile(r"사이버\s*강의|온라인\s*강의|비대면|원격\s*수업|동영상\s*강의|e-?learning|OCW|KOCW", re.IGNORECASE)
-_EXAM_TYPE = [("midterm", re.compile(r"중간|midterm", re.I)), ("final", re.compile(r"기말|final", re.I)),
-              ("quiz", re.compile(r"퀴즈|quiz", re.I))]
+_EXAM_TYPE = [("midterm", re.compile(r"중간\s*고사|중간\s*시험|중간|midterm(?:\s+exam)?", re.I)),
+              ("final", re.compile(r"기말\s*고사|기말\s*시험|기말|final(?:\s+exam)?", re.I)),
+              ("quiz", re.compile(r"퀴즈|quiz(?:\s*#?\d+)?", re.I))]
+
+# row/section labels that are generic headers, not event titles
+_GENERIC_EVENT_LABEL = re.compile(
+    r"^\s*(?:시험|고사|평가|성적|일정|이벤트|과제|숙제|주차|week|exams?|assignments?|homework|"
+    r"evaluation|schedule|grading|date|일자|날짜)\s*$", re.IGNORECASE)
+
+
+def _event_title(cand) -> "str | None":
+    """Best-effort event title from the candidate's own context — text that is
+    literally in the document, never invented (§3-4 spirit).
+
+    Priority: a non-generic table row label / section title; else the phrase
+    ending right before the date on the same line ("Midterm Exam: Week 3").
+    """
+    from .rule_fields import cut_at_next_label
+
+    for source in (cand.table_row_label, cand.section_title):
+        if not source:
+            continue
+        t = cut_at_next_label(str(source)).strip(" :|·-–—,\t")
+        if t and len(t) <= 80 and not _GENERIC_EVENT_LABEL.match(t):
+            return t
+
+    before = (cand.nearby_text_before or "").rstrip(" \t")
+    if before and not before.endswith("\n"):
+        line = before.splitlines()[-1]
+        for sep in (";", "|", "•", "·"):
+            if sep in line:
+                line = line.rsplit(sep, 1)[-1]
+        line = line.strip(" :|·,\t")
+        line = re.sub(r"^\W+", "", line)
+        line = re.sub(r"[#(\[{№-]+$", "", line).strip()   # dangling "Quiz #", "Exam ("
+        # a title starts like a title — a lowercase English start is a sentence
+        # fragment from the context window, not an event name.
+        if 3 <= len(line) <= 80 and not line.replace(" ", "").isdigit() \
+                and not line[0].islower() \
+                and not _GENERIC_EVENT_LABEL.match(line):
+            return line
+    return None
+
+
+def _matched_cue(ctx: str) -> "tuple[str | None, str | None]":
+    """(etype, the literal matched text) for exam-type cues in context."""
+    for etype, pat in _EXAM_TYPE:
+        m = pat.search(ctx)
+        if m:
+            return etype, m.group(0).strip()
+    return None, None
 
 
 def extract_subsystem(doc, classifier=None) -> dict:
@@ -38,10 +87,13 @@ def extract_subsystem(doc, classifier=None) -> dict:
         elif label in ("instructor_office_hours", "ta_office_hours"):
             office_hours.append({"raw": cand.candidate_text, "who": "ta" if label.startswith("ta") else "instructor"})
         elif label == "exam_time":
-            etype = next((t for t, pat in _EXAM_TYPE if pat.search(ctx + " " + cand.candidate_text)), None)
-            exams.append(_dated_entry(cand, {"type": etype}))
+            etype, cue_text = _matched_cue(ctx + " " + cand.candidate_text)
+            # title: real context title first; else the literal matched cue
+            # ("Midterm Exam") — text that appears in the document.
+            title = _event_title(cand) or cue_text
+            exams.append(_dated_entry(cand, {"type": etype, "title": title}))
         elif label == "assignment_deadline":
-            assignments.append(_dated_entry(cand, {"title": (cand.table_row_label or cand.section_title or None)}))
+            assignments.append(_dated_entry(cand, {"title": _event_title(cand)}))
 
     raw_time = labeled_value(doc, "class_time", cut=False)
     if raw_time and _TBA.search(raw_time):

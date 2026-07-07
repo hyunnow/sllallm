@@ -82,6 +82,63 @@ def compute_metrics(
     return dict(out)
 
 
+def parse_events(v) -> list[tuple]:
+    """'제목 | 타입 | 날짜 | 날짜종류 ; ...' -> normalized 4-tuples (padded)."""
+    out = []
+    for seg in str(v or "").split(";"):
+        seg = seg.strip()
+        if not seg:
+            continue
+        parts = [_norm(p) for p in seg.split("|")]
+        out.append(tuple((parts + ["", "", "", ""])[:4]))
+    return out
+
+
+def event_partial_stats(gold_cells: list[dict], preds: dict[str, dict],
+                        docs: Optional[set] = None) -> dict:
+    """Event-LEVEL diagnostics for 이벤트 (the '이벤트_정답수' idea): per method,
+    how many gold events are fully matched, and which PARTS (title/type/date/
+    date_kind) match after greedy best-alignment. Diagnostic only — winners are
+    still chosen by the three field-level metrics."""
+    res = {}
+    for method, table in preds.items():
+        g_total = p_total = exact = aligned = 0
+        part_hits = [0, 0, 0, 0]
+        for c in gold_cells:
+            if c["field"] != "이벤트":
+                continue
+            if docs is not None and c["syllabus_id"] not in docs:
+                continue
+            G = parse_events(c["gold"])
+            P = parse_events(table.get((c["syllabus_id"], "이벤트")))
+            g_total += len(G)
+            p_total += len(P)
+            used: set = set()
+            for g in G:
+                best, best_score = None, 0
+                for j, p in enumerate(P):
+                    if j in used:
+                        continue
+                    score = sum(1 for a, b in zip(g, p) if a and a == b)
+                    if score > best_score:
+                        best_score, best = score, j
+                if best is not None:
+                    used.add(best)
+                    aligned += 1
+                    p = P[best]
+                    for k in range(4):
+                        if g[k] and g[k] == p[k]:
+                            part_hits[k] += 1
+                    if g == p:
+                        exact += 1
+        res[method] = {
+            "gold_events": g_total, "pred_events": p_total, "aligned": aligned,
+            "exact": exact, "title": part_hits[0], "type": part_hits[1],
+            "date": part_hits[2], "date_kind": part_hits[3],
+        }
+    return res
+
+
 def pick_winner(field: str, per_method: dict) -> Optional[str]:
     """Risk-weighted provisional winner. Methods with zero output are skipped."""
     candidates = {m: s for m, s in per_method.items() if s["n_output"] > 0}

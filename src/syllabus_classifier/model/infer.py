@@ -80,20 +80,26 @@ class HeuristicClassifier:
         if _DURATION_RE.fullmatch(text.strip()) or (_DURATION_RE.search(text) and ":" not in text and "시" not in text):
             return self._c(Label.POLICY_TEXT, 0.6, candidate, "duration, not a start/end time")
 
-        # office hours — the flagship failure mode. Check first, hardest.
-        if _contains_any(ctx, _OFFICE_HOURS_CUES):
-            if _contains_any(ctx, _TA_CUES):
-                return self._c(Label.TA_OFFICE_HOURS, 0.9, candidate, "TA office-hours context")
-            return self._c(Label.INSTRUCTOR_OFFICE_HOURS, 0.95, candidate, "office-hours context")
+        # Cue families are resolved SAME-LINE first, full context second: the
+        # ±context window crosses line breaks, so "Midterm Exam: Week 3" must not
+        # flip to assignment because the NEXT line says "과제 제출" (and vice
+        # versa). Within a scope the order stays office > assignment > exam
+        # (office is the flagship risk; §3-9 keeps homework rows deterministic).
+        before_line = (candidate.nearby_text_before or "").splitlines()[-1] if candidate.nearby_text_before else ""
+        after_line = (candidate.nearby_text_after or "").splitlines()[0] if candidate.nearby_text_after else ""
+        line_ctx = " ".join(p for p in (
+            candidate.section_title, candidate.table_row_label, candidate.table_col_label,
+            before_line, after_line, text) if p)
 
-        # assignment BEFORE exam: a "Homework & Quiz" row must classify as
-        # assignment deterministically, not flip to exam on the quiz cue (§3-9).
-        # 23:59 / 11:59pm is a deadline even when a "Class N" row label is nearby.
-        if _contains_any(ctx, _ASSIGN_CUES) or _DEADLINE_RE.search(text):
-            return self._c(Label.ASSIGNMENT_DEADLINE, 0.8, candidate, "assignment/deadline context")
-
-        if _contains_any(ctx, _EXAM_CUES):
-            return self._c(Label.EXAM_TIME, 0.85, candidate, "exam context")
+        for scope in (line_ctx, ctx):
+            if _contains_any(scope, _OFFICE_HOURS_CUES):
+                if _contains_any(scope, _TA_CUES) or _contains_any(ctx, _TA_CUES):
+                    return self._c(Label.TA_OFFICE_HOURS, 0.9, candidate, "TA office-hours context")
+                return self._c(Label.INSTRUCTOR_OFFICE_HOURS, 0.95, candidate, "office-hours context")
+            if _contains_any(scope, _ASSIGN_CUES) or _DEADLINE_RE.search(text):
+                return self._c(Label.ASSIGNMENT_DEADLINE, 0.8, candidate, "assignment/deadline context")
+            if _contains_any(scope, _EXAM_CUES):
+                return self._c(Label.EXAM_TIME, 0.85, candidate, "exam context")
 
         # week/plan references (8주차, week 3) with no concrete class time
         if _contains_any(text, _WEEKPLAN_CUES) or _contains_any(ctx, _WEEKPLAN_CUES):

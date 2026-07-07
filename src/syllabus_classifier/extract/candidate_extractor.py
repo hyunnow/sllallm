@@ -104,8 +104,11 @@ def extract_candidates(
     candidates: list[TimeCandidate] = []
     for start, end in spans:
         raw = text[start:end]
-        before = text[max(0, start - context_window):start].strip()
-        after = text[end:end + context_window].strip()
+        # context is kept RAW (no strip): line boundaries are signal — the
+        # classifier resolves cue conflicts same-line-first, which requires the
+        # newline between "Midterm Exam: Week 3" and the next line to survive.
+        before = text[max(0, start - context_window):start]
+        after = text[end:end + context_window]
         candidates.append(
             TimeCandidate(
                 candidate_text=raw.strip(),
