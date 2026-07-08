@@ -243,6 +243,34 @@ def _resolve_periods_from_table(table: dict, period_numbers: list[int], key: str
     return ResolvedTime(start_time=min(starts), end_time=max(ends), resolved_by="period_timetable_kb")
 
 
+# canonical school name -> academic-calendar key for the CURRENT/UPCOMING term
+# (keys follow whatever the humans used in academic_calendars.yaml)
+CALENDAR_KEY_BY_SCHOOL_2026_FALL = {
+    "한양대학교": "hanyang__2026_2",
+    "숭실대학교": "Soon__2026_fall",
+    "New York University": "NYU__2026_fall",
+    "연세대학교": "yonsei__2026_2",
+    "고려대학교": "korea__2026_2",
+    "서울대학교": "snu__2026_2",
+    "성균관대학교": "skku__2026_2",
+    "서강대학교": "sogang__2026_2",
+    "이화여자대학교": "ewha__2026_2",
+    "KAIST": "kaist__2026_fall",
+    "홍익대학교": "hongik__2026_2",
+    "건국대학교": "konkuk__2026_2",
+    "동국대학교": "dongguk__2026_2",
+    "UNIST": "unist__2026_fall",
+}
+
+
+def calendar_usable(cal: "dict | None") -> bool:
+    """A calendar entry may produce definitive dates only with a HIGH-confidence
+    term_start (user safety rule)."""
+    if not cal or not cal.get("term_start"):
+        return False
+    return str(cal.get("term_start_confidence", "high")).lower() in ("high", "높음")
+
+
 # canonical school name (school_dictionary) -> period-timetable key
 TIMETABLE_KEY_BY_SCHOOL = {
     "연세대학교": "yonsei_seoul",

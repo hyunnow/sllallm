@@ -36,7 +36,10 @@ _EN_DAY_TOKEN = re.compile(r"\b(mon|tues?|tuesday|weds?|wednesday|thur?s?|thursd
                            r"sat|saturday|sun|sunday|monday)\b\.?", re.IGNORECASE)
 _KO_DAY_TOKEN = re.compile(r"(?<![가-힣])([월화수목금토일])(?:요일)?(?![가-힣])")
 _DAY_RANGE = re.compile(r"(?P<x>[A-Za-z]{3,9}|[월화수목금토일])\s*[-~]\s*(?P<y>[A-Za-z]{3,9}|[월화수목금토일])")
-_PERIODS = re.compile(r"(\d{1,2}(?:\s*[,·]\s*\d{1,2})*)\s*교시|(?<![\d:])(\d{1,2}(?:\s*,\s*\d{1,2})+)(?![\d:])")
+# ONLY explicit 교시-suffixed lists are periods. Bare digit lists ("금 1,2,3",
+# "화 19,20,21") are ambiguous — even the human reviewer couldn't tell periods
+# from o'clock hours (B2-020/022 memos) — so we abstain on them.
+_PERIODS = re.compile(r"(\d{1,2}(?:\s*[,·]\s*\d{1,2})*)\s*교시")
 
 _ROOM_TAIL = re.compile(r"\b\d{2,4}-[A-Za-z]?\d{2,4}\b")            # 607-208, 104-E101
 
@@ -144,7 +147,7 @@ def to_notation(raw: str, *, timetable_key: Optional[str] = None, kb=None) -> Op
 
         pm = _PERIODS.search(seg)
         if pm:
-            nums = [int(n) for n in re.findall(r"\d{1,2}", pm.group(1) or pm.group(2))]
+            nums = [int(n) for n in re.findall(r"\d{1,2}", pm.group(1))]
             if not nums or not timetable_key:
                 return None
             from ..kb.resolver import resolve_period_reference

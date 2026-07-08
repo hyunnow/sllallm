@@ -31,8 +31,13 @@ def test_start_plus_duration_pairs_with_room_tails():
 
 def test_periods_via_timetable_kb():
     assert to_notation("화 5,6교시", timetable_key="yonsei_seoul", kb=kb()) == "Tue 13:00-14:50"
-    # bare numbers after a day count as periods too (화5,6 style)
-    assert to_notation("화 5,6", timetable_key="yonsei_seoul", kb=kb()) == "Tue 13:00-14:50"
+
+
+def test_bare_digit_lists_abstain():
+    # B2-020/022 memos: "금 1,2,3,4,5,6" / "화 19,20,21" — periods or o'clock?
+    # even the reviewer couldn't tell -> we must NOT guess, even with a KB.
+    assert to_notation("화 19,20,21", timetable_key="yonsei_seoul", kb=kb()) is None
+    assert to_notation("금 1,2,3,4,5,6", timetable_key="yonsei_seoul", kb=kb()) is None
 
 
 def test_periods_without_kb_abstain():

@@ -95,6 +95,15 @@ def extract_subsystem(doc, classifier=None) -> dict:
         elif label == "assignment_deadline":
             assignments.append(_dated_entry(cand, {"title": _event_title(cand)}))
 
+    # C4 multi-section detection (B2-035/036 memos: 4 분반이 한 문서에 — 수업
+    # 시간·강의실이 여러 벌). 서로 다른 라벨 값이 3개 이상이면 분반 혼합 의심 —
+    # 하나를 골라 채우지 말고 needs_review로 올린다 (v4 §3 C4).
+    from .rule_fields import find_labeled_values
+
+    distinct_times = {v.strip() for v in find_labeled_values(doc, "class_time")}
+    distinct_rooms = {v.strip() for v in find_labeled_values(doc, "location")}
+    multi_section = len(distinct_times) >= 3 or len(distinct_rooms) >= 3
+
     raw_time = labeled_value(doc, "class_time", cut=False)
     if raw_time and _TBA.search(raw_time):
         status = "tba"
@@ -122,6 +131,7 @@ def extract_subsystem(doc, classifier=None) -> dict:
     return {
         "meeting.status": status,
         "meeting.events": class_events if status == "present" else [],
+        "meeting.multi_section_suspect": multi_section,
         "instructors.office_hours": office_hours,
         "schedule.exams": exams,
         "schedule.assignments": assignments,

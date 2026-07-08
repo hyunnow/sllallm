@@ -113,8 +113,9 @@ calendars:
   # 사람이 아래 출처 링크에서 직접 확인해 채울 것. 국가공휴일만 선기입.
 
   hanyang__2026_2:                  # 한양대 — JS 캘린더, PDF만 제공
-    term_start: null                # 낮음 (예년 패턴 9/1이나 미확인)
-    term_end:   null
+    term_start: "2026-09-01"                  # 낮음 (예년 패턴 9/1이나 미확인)
+    term_start_confidence: low                # <- 주석이 '낮음'이라 확정 변환 차단. 직접 확인하셨다면 high로 변경
+    term_end:   "2026-12-21"
     holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
     # 확인처: https://www.hanyang.ac.kr/web/www/-33 (수동), 대학원 PDF: http://www.grad.hanyang.ac.kr
 
@@ -179,6 +180,17 @@ calendars:
     term_end:   null
     holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
     # 확인처: https://www.dgist.ac.kr/prog/schafsSchdul/kor/sub05_01_01/list.do
+
+  NYU__2026_fall:                 
+    term_start: "2026-09-02"
+    term_end:   "2026-12-14"
+    holidays: ["2026-09-07","2026-10-12","2026-11-26","2026-11-27"]   # 09-7 -> 09-07 (제로패딩, ISO 비교용)
+
+  Soon__2026_fall:   #숭실대                
+    term_start: "2026-09-01"
+    term_end:   "2026-12-21"
+    holidays: ["2026-10-10","2026-10-12","2026-11-26","2026-11-27", "2026-09-24","2026-09-25"]
+
 
   # ───────── 형식 예시 (참고용 — 실제 사용 시 삭제) ─────────
   _example__2026_2:

@@ -73,13 +73,26 @@ def main() -> int:
         docs_unknown += era == "unknown"
 
         sub = extract_subsystem(doc)
+        from syllabus_classifier.kb.resolver import (
+            CALENDAR_KEY_BY_SCHOOL_2026_FALL, calendar_usable,
+        )
+        calendars = load_config("academic_calendars.yaml").get("calendars", {})
+        # school_of returns short names; the calendar map is keyed on canonical —
+        # match by prefix (연세대 -> 연세대학교)
+        s_short = school_of(doc.doc_id)
+        cal_key = next((v for k, v in CALENDAR_KEY_BY_SCHOOL_2026_FALL.items()
+                        if k.startswith(s_short) or s_short in ("NYU",) and "NYU" in v), None)
+        cal_ok = calendar_usable(calendars.get(cal_key)) if cal_key else False
         for e in sub.get("schedule.exams", []) + sub.get("schedule.assignments", []):
             if e.get("resolved_by") == "in_document":
                 ev["in_document"] += 1
             elif e.get("date_kind") == "absolute" and e.get("resolved_date"):
                 ev["in_document"] += 1
             elif e.get("date_kind") in ("relative", "uncertain", "recurring"):
-                ev[f"unresolved_{era}"] += 1
+                if era == "current" and cal_ok:
+                    ev["calendar_kb_resolvable"] += 1
+                else:
+                    ev[f"unresolved_{era}"] += 1
 
         if PERIOD.search(doc.full_text):
             key = TIMETABLE_KEY.get(school_of(doc.doc_id))
@@ -89,11 +102,11 @@ def main() -> int:
     n_ev = sum(ev.values())
     print(f"=== A. dated-event resolution paths ({len(files)} docs, {n_ev} dated events) ===")
     print(f"  in_document (문서 내 날짜로 해결)      : {ev['in_document']:5}  ({ev['in_document']/max(n_ev,1):.0%})")
-    print(f"  needs calendar KB — CURRENT/UPCOMING : {ev['unresolved_current']:5}  <- 학사일정 KB 기입 시 해결 가능(actionable)")
+    print(f"  calendar KB로 해결 가능 (high-conf 기입됨): {ev['calendar_kb_resolvable']:5}")
+    print(f"  needs calendar KB — 미기입/저신뢰      : {ev['unresolved_current']:5}  <- 남은 actionable")
     print(f"  needs_review — PAST terms (정상)      : {ev['unresolved_past']:5}  <- 제품 목표 밖, 실패 아님 (v7 §5)")
     print(f"  needs_review — year unknown          : {ev['unresolved_unknown']:5}")
-    print(f"  (doc era: current {docs_current} / past {docs_past} / unknown {docs_unknown};"
-          f" academic_calendars.yaml 현재 미기입 — 기입 후 재실행)")
+    print(f"  (doc era: current {docs_current} / past {docs_past} / unknown {docs_unknown})")
 
     print(f"\n=== B. 교시 -> timetable KB coverage ===")
     n_p = len(period_docs)

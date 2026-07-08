@@ -98,6 +98,11 @@ def build_record(doc, outputs: dict[str, dict]) -> dict:
         _flag(rec, "schedule.weekly_plan",
               f"plan table alignment issues: {', '.join(sub.get('schedule.plan_issues', []))}")
 
+    # C4: multiple sections mixed in one syllabus (3+ distinct class times/rooms)
+    # — picking one silently would be wrong for most students; surface it.
+    if sub.get("meeting.multi_section_suspect"):
+        _flag(rec, "meeting", "multiple sections suspected (3+ distinct class times/rooms, C4)")
+
     _cross_validate(rec)
     return rec
 

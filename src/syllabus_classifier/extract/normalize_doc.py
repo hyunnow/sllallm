@@ -149,6 +149,14 @@ def normalize_pdf(path: str, doc_id: str) -> NormalizedDoc:
                              notes=[f"pdfplumber open failed: {type(e).__name__}: {e}"])
 
     npages = max(len(pages), 1)
+    # CID-garbage: a broken font map exposes glyph ids "(cid:123)" instead of
+    # text — human-readable on screen, useless as text (SYL-036/040 reviewer
+    # memo). Treat like a scan: OCR is the only way to read it.
+    all_text = "".join(p.text for p in pages)
+    if all_text and all_text.count("(cid:") * 8 > len(all_text) * 0.3:
+        return NormalizedDoc(doc_id=doc_id, pages=pages, source_format="pdf_cid",
+                             extraction_quality="needs_ocr",
+                             notes=["CID-encoded text layer (broken font map); needs OCR"])
     if total_chars / npages < _SCAN_CHARS_PER_PAGE:
         # no usable text layer -> scanned; defer to OCR.
         doc = normalize_scanned_pdf(path, doc_id)
