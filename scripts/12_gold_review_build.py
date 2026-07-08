@@ -28,6 +28,7 @@ import argparse
 import concurrent.futures as cf
 import json
 import random
+import re
 import sys
 from pathlib import Path
 
@@ -107,7 +108,7 @@ def draft_one(client, model: str, row: dict) -> dict:
     return {f: (str(data[f]).strip() if data.get(f) not in (None, "", []) else None) for f in FIELDS}
 
 
-def corpus_rows(n: int, seed: int) -> list[dict]:
+def corpus_rows(n: int, seed: int, exclude_doc_ids: set = frozenset(), id_prefix: str = "B2") -> list[dict]:
     """Sample normalized corpus docs (stratified by school folder) as review rows.
     Skips docs with no usable text (needs_ocr/failed). syllabus_id = B2-### with
     the real doc_id kept alongside for later joins."""
@@ -124,6 +125,8 @@ def corpus_rows(n: int, seed: int) -> list[dict]:
         text = doc.full_text.strip()
         if doc.extraction_quality in ("failed", "needs_ocr") or len(text) < 200:
             continue
+        if doc.doc_id in exclude_doc_ids:      # never re-review a prior batch's doc
+            continue
         by_school[doc.doc_id.split("__", 1)[0]].append((doc.doc_id, text))
 
     rng = random.Random(seed)
@@ -134,7 +137,7 @@ def corpus_rows(n: int, seed: int) -> list[dict]:
         picked.extend(rng.sample(docs, min(per, len(docs))))
     rng.shuffle(picked)
     picked = picked[:n]
-    return [{"syllabus_id": f"B2-{i+1:03d}", "doc_id": doc_id, "source_text": text}
+    return [{"syllabus_id": f"{id_prefix}-{i+1:03d}", "doc_id": doc_id, "source_text": text}
             for i, (doc_id, text) in enumerate(picked)]
 
 
@@ -144,6 +147,8 @@ def main() -> int:
     ap.add_argument("--xlsx", default="ParserTest.xlsx")
     ap.add_argument("--n", type=int, default=40, help="corpus docs to sample (--source corpus)")
     ap.add_argument("--out-prefix", default="", help="suffix for output files (e.g. batch2)")
+    ap.add_argument("--exclude-drafts", nargs="*", default=[],
+                    help="prior drafts jsonl(s); their doc_ids are excluded from sampling")
     ap.add_argument("--blind", type=float, default=0.15)
     ap.add_argument("--model", default="gpt-4o-mini")
     ap.add_argument("--workers", type=int, default=6)
@@ -157,7 +162,16 @@ def main() -> int:
     client = OpenAI(timeout=60, max_retries=3)
 
     if args.source == "corpus":
-        rows = corpus_rows(args.n, args.seed)
+        exclude = set()
+        for path in args.exclude_drafts:
+            for line in Path(path).read_text(encoding="utf-8").splitlines():
+                d = json.loads(line)
+                if d.get("doc_id"):
+                    exclude.add(d["doc_id"])
+        # id prefix from the batch name ("batch3" -> "B3") so batches never collide
+        m = re.search(r"(\d+)", args.out_prefix or "")
+        id_prefix = f"B{m.group(1)}" if m else "B2"
+        rows = corpus_rows(args.n, args.seed, exclude_doc_ids=exclude, id_prefix=id_prefix)
     else:
         rows = [r for r in load_rows(args.xlsx) if r["source_text"]]
 

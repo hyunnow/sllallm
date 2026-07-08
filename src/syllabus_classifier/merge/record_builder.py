@@ -104,6 +104,13 @@ def build_record(doc, outputs: dict[str, dict]) -> dict:
         _flag(rec, "meeting", "multiple sections suspected (3+ distinct class times/rooms, C4)")
 
     _cross_validate(rec)
+
+    # v7 §2 final wiring: with school/term known and a HIGH-confidence calendar
+    # available, relative references resolve to dates (weekday given) or week
+    # ranges (week only — never an invented single date).
+    from ..kb.record_resolver import resolve_record_dates
+
+    resolve_record_dates(rec)
     return rec
 
 

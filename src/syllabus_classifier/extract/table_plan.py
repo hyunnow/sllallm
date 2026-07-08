@@ -22,7 +22,13 @@ from ..normalize import normalize_date
 
 _WEEK_H = re.compile(r"^\s*(?:주\s*차?|week|wk|제?\s*\d*\s*주)\s*$", re.I)
 _DATE_H = re.compile(r"기간|날짜|일자|date|일정", re.I)
-_TOPIC_H = re.compile(r"수업\s*내용|강의\s*내용|학습\s*내용|주제|강의\s*주제|내용|topic|content|subject|title", re.I)
+# topic column selection is TIERED (batch-2 gold evidence: reviewers take the
+# short 주제/제목 column, not the long 학습목표/상세내용 one — B2-001/010/013):
+#   tier 1: explicit topic headers   tier 2: content-ish fallback
+# and some headers are NEVER the topic (핵심어 B2-003, 학습목표, 방법, 추가설명).
+_TOPIC_H1 = re.compile(r"주제|제목|단원|강의\s*주제|topic|subject|title", re.I)
+_TOPIC_H2 = re.compile(r"수업\s*내용|강의\s*내용|학습\s*내용|내용|content", re.I)
+_TOPIC_EXCLUDE = re.compile(r"핵심어|키워드|keyword|목표|objective|방법|method|평가|과제|추가\s*설명|비고", re.I)
 _BOOK_H = re.compile(r"교재|범위|reading|chapter|자료", re.I)
 _REMARK_H = re.compile(r"비고|remark|note|기타", re.I)
 
@@ -54,6 +60,7 @@ class WeeklyPlan:
 
 def _colmap_from_header(header: list[str]) -> Optional[dict]:
     cmap: dict = {}
+    topic_tier = 99
     for i, cell in enumerate(header or []):
         c = (cell or "").strip()
         if not c:
@@ -62,8 +69,10 @@ def _colmap_from_header(header: list[str]) -> Optional[dict]:
             cmap["week"] = i
         elif "date" not in cmap and _DATE_H.search(c):
             cmap["date"] = i
-        elif "topic" not in cmap and _TOPIC_H.search(c):
-            cmap["topic"] = i
+        elif not _TOPIC_EXCLUDE.search(c) and _TOPIC_H1.search(c) and topic_tier > 1:
+            cmap["topic"], topic_tier = i, 1
+        elif not _TOPIC_EXCLUDE.search(c) and _TOPIC_H2.search(c) and topic_tier > 2:
+            cmap["topic"], topic_tier = i, 2
         elif "book" not in cmap and _BOOK_H.search(c):
             cmap["book"] = i
         elif "remark" not in cmap and _REMARK_H.search(c):
@@ -161,38 +170,73 @@ def _events_from_rows(rows: list[PlanRow]) -> list[dict]:
     return events
 
 
+def _rows_from_table(table) -> list[PlanRow]:
+    cmap = _colmap_from_header(table.header) or _numeric_first_col(table)
+    if not cmap:
+        return []
+    rows = []
+    for raw in table.rows:
+        def cell(key):
+            i = cmap.get(key)
+            if i is None or i >= len(raw):
+                return None
+            # PDF cells wrap mid-word — collapse internal whitespace
+            return re.sub(r"\s+", " ", raw[i] or "").strip() or None
+        week = _parse_week(cell("week") or "")
+        if week is None and not (cell("topic") or "").strip():
+            continue
+        rows.append(PlanRow(week=week, date_range=cell("date"), topic=cell("topic"),
+                            textbook_range=cell("book"), remarks=cell("remark")))
+    rows = [r for r in rows if r.week is not None or r.topic]
+    return rows if len([r for r in rows if r.week is not None]) >= 2 else []
+
+
+def _plan_from_rows(rows: list[PlanRow]) -> WeeklyPlan:
+    issues = _check_alignment(rows)
+    plan = WeeklyPlan(rows=rows, issues=issues)
+    if issues:
+        # abstain-on-uncertain: corrupted alignment must not emit values
+        plan.needs_review = True
+        plan.rows = []
+        plan.total_weeks = None
+    else:
+        weeks = [r.week for r in rows if r.week is not None]
+        plan.total_weeks = max(weeks)
+        plan.events = _events_from_rows(rows)
+    return plan
+
+
 def parse_weekly_plan(doc) -> WeeklyPlan:
-    """Find and parse the weekly-plan table(s) of a NormalizedDoc."""
-    best: Optional[WeeklyPlan] = None
+    """Find and parse the weekly-plan table(s) of a NormalizedDoc.
+
+    A plan often SPANS PAGES as several tables (weeks 1-13 + 14-16). Fragments
+    with disjoint week sets are merged before the alignment checks — taking only
+    the biggest fragment silently drops the final weeks (the SYL-022 15-vs-16
+    failure, reproduced on B2-002)."""
+    fragments: list[list[PlanRow]] = []
     for page in doc.pages:
         for table in page.tables:
-            cmap = _colmap_from_header(table.header) or _numeric_first_col(table)
-            if not cmap:
-                continue
-            rows = []
-            for raw in table.rows:
-                def cell(key):
-                    i = cmap.get(key)
-                    return (raw[i] or "").strip() if i is not None and i < len(raw) else None
-                week = _parse_week(cell("week") or "")
-                if week is None and not (cell("topic") or "").strip():
-                    continue
-                rows.append(PlanRow(week=week, date_range=cell("date"), topic=cell("topic"),
-                                    textbook_range=cell("book"), remarks=cell("remark")))
-            rows = [r for r in rows if r.week is not None or r.topic]
-            if len([r for r in rows if r.week is not None]) < 3:
-                continue
-            issues = _check_alignment(rows)
-            plan = WeeklyPlan(rows=rows, issues=issues)
-            if issues:
-                # abstain-on-uncertain: corrupted alignment must not emit values
-                plan.needs_review = True
-                plan.rows = []
-                plan.total_weeks = None
-            else:
-                weeks = [r.week for r in rows if r.week is not None]
-                plan.total_weeks = max(weeks)
-                plan.events = _events_from_rows(rows)
-            if best is None or len(plan.rows) > len(best.rows):
-                best = plan
-    return best or WeeklyPlan()
+            rows = _rows_from_table(table)
+            if rows:
+                fragments.append(rows)
+    if not fragments:
+        return WeeklyPlan()
+
+    # merge fragments whose week sets don't overlap (page-split plans)
+    fragments.sort(key=lambda rs: min((r.week for r in rs if r.week is not None), default=99))
+    merged: list[PlanRow] = []
+    seen_weeks: set[int] = set()
+    for rs in fragments:
+        weeks = {r.week for r in rs if r.week is not None}
+        if weeks and not (weeks & seen_weeks):
+            merged.extend(rs)
+            seen_weeks |= weeks
+    candidates = [merged] + sorted(fragments, key=len, reverse=True)
+
+    first: Optional[WeeklyPlan] = None
+    for rows in candidates:
+        plan = _plan_from_rows(rows)
+        first = first or plan
+        if not plan.needs_review and plan.rows:
+            return plan                      # first clean candidate wins (merged preferred)
+    return first or WeeklyPlan()

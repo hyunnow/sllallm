@@ -75,6 +75,8 @@ def _norm(s: str) -> str:
     s = re.sub(r"\s+", " ", str(s)).strip().lower()
     s = re.sub(r"[–—]", "-", s)                  # en/em dashes == hyphen
     s = re.sub(r"\s*([;|~:])\s*", r"\1", s)      # spacing around separators is not a difference
+    s = re.sub(r"\bweek\s*0(\d)\b", r"week \1", s)   # "Week 01" == "Week 1" (B2-002)
+    s = re.sub(r"\b0(\d)\s*주차", r"\1주차", s)
     # numeric surface: "3.0" == "3" (credits/weeks written either way)
     if re.fullmatch(r"\d+\.0+", s):
         s = s.split(".")[0]
