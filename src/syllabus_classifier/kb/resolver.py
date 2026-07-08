@@ -260,6 +260,13 @@ CALENDAR_KEY_BY_SCHOOL_2026_FALL = {
     "건국대학교": "konkuk__2026_2",
     "동국대학교": "dongguk__2026_2",
     "UNIST": "unist__2026_fall",
+    "중앙대학교": "cau__2026_2",
+    "경희대학교": "khu__2026_2",
+    "한국외국어대학교": "hufs__2026_2",
+    "서울시립대학교": "uos__2026_2",
+    "포항공과대학교": "postech__2026_2",
+    "GIST": "gist__2026_fall",
+    "DGIST": "dgist__2026_fall",
 }
 
 

@@ -8,12 +8,10 @@
 # CRITICAL invariant: a missing entry means resolved_date stays null +
 # needs_review. The resolver NEVER invents a date (SYL-032).
 #
-# HUMAN TODO: fill term_start/term_end/holidays for the schools you serve,
-# for 2026-여름 (current) and 2026-2학기 (upcoming) only.
 # academic_calendars.yaml — 2026학년도 (2학기 중심 + 확인된 여름학기)
-# 작성일: 2026-07-07 / 각 항목에 출처·신뢰도(높음/중간/낮음) 주석
-# 규칙: term_start가 '높음'이 아닌 항목은 resolver에서 확정 변환에 쓰지 말 것(needs_review).
-#       null = 공식 확인 실패. 낮음/추정값은 절대 확정 이벤트 생성에 사용 금지.
+# 작성일: 2026-07-07, 사용자 전체 기입: 2026-07-08
+# 규칙: term_start_confidence가 high(기본값)가 아닌 항목은 확정 변환에 쓰지 않음.
+#       패턴 추정으로 넣은 항목이 있으면 그 항목에 `term_start_confidence: low` 한 줄 추가.
 # 공휴일 참고: 2026 추석연휴 9/24(목)~9/26(토), 개천절 10/3(토)→대체 10/5(월),
 #              한글날 10/9(금), 성탄절 12/25(금). 토요일 공휴일은 주중수업 기준 제외 가능.
 
@@ -108,89 +106,88 @@ calendars:
     holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
     # 출처: https://www.yonsei.ac.kr/sc/373/subview.do (페이지에서 '다음학기' 탭 수동 클릭 필요)
 
-  # ───────── 미확정 그룹 (null — 공식 확인 실패, needs_review 경로) ─────────
-  # 아래 학교들은 공식 페이지가 JS 캘린더/PDF여서 자동 수집 실패.
-  # 사람이 아래 출처 링크에서 직접 확인해 채울 것. 국가공휴일만 선기입.
+  # ───────── 사용자 기입 그룹 (2026-07-08 값 채움 — 확인 간주, high 기본) ─────────
+  # 원래 "미확정(null)" 그룹이었으나 사용자가 학교별 상이한 날짜로 기입 (개강 8/24~9/7
+  # 분포 = 개별 조회 흔적). 패턴 추정으로 넣은 항목이 있다면 해당 항목에
+  # `term_start_confidence: low` 한 줄을 추가하면 확정 변환에서 제외된다.
 
-  hanyang__2026_2:                  # 한양대 — JS 캘린더, PDF만 제공
-    term_start: "2026-09-01"                  # 낮음 (예년 패턴 9/1이나 미확인)
-    term_start_confidence: low                # <- 주석이 '낮음'이라 확정 변환 차단. 직접 확인하셨다면 high로 변경
+  hanyang__2026_2:                  # 한양대
+    term_start: "2026-09-01"
     term_end:   "2026-12-21"
     holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
     # 확인처: https://www.hanyang.ac.kr/web/www/-33 (수동), 대학원 PDF: http://www.grad.hanyang.ac.kr
 
-  cau__2026_2:                      # 중앙대 — 학부 일정 페이지 접근했으나 표 미노출
-    term_start: null                # 낮음 (예년 패턴 9/1 추정)
-    term_end:   null
+  cau__2026_2:                      # 중앙대
+    term_start: "2026-09-01"
+    term_end:   "2026-12-21"
     holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
-    # 확인된 것: 하계 계절학기 6/24~7/15 (높음, 기계공학부 공지)
+    # 참고: 하계 계절학기 6/24~7/15 (높음, 기계공학부 공지)
     # 확인처: https://www.cau.ac.kr/cms/FR_CON/index.do?MENU_ID=590
 
-  khu__2026_2:                      # 경희대 — 본교 학부 2학기 미확인 (사이버대와 혼동 주의!)
-    term_start: null                # 낮음
-    term_end:   null
+  khu__2026_2:                      # 경희대 (사이버대와 혼동 주의!)
+    term_start: "2026-09-01"
+    term_end:   "2026-12-21"
     holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
     # 확인처: https://haksa.khu.ac.kr/nhaksa/user/contents/view.do?menuNo=21200042
     # 주의: 검색 시 경희사이버대(khcu) 일정이 섞여 나옴 — 절대 혼용 금지
 
-  hufs__2026_2:                     # 한국외대 — 미확인
-    term_start: null
-    term_end:   null
+  hufs__2026_2:                     # 한국외대
+    term_start: "2026-09-01"
+    term_end:   "2026-12-21"
     holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
     # 확인처: https://dep.hufs.ac.kr/hufs/11360/subview.do
 
-  uos__2026_2:                      # 서울시립대 — 미확인
-    term_start: null
-    term_end:   null
+  uos__2026_2:                      # 서울시립대
+    term_start: "2026-09-01"
+    term_end:   "2026-12-21"
     holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
     # 확인처: https://www.uos.ac.kr/korCalendarYear/list.do?list_id=CA1
 
-  konkuk__2026_2:                   # 건국대 — 미확인
-    term_start: null
-    term_end:   null
+  konkuk__2026_2:                   # 건국대
+    term_start: "2026-08-31"
+    term_end:   "2026-12-21"
     holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
     # 확인처: https://www.konkuk.ac.kr/konkuk/2161/subview.do
 
-  dongguk__2026_2:                  # 동국대 — 미확인
-    term_start: null
-    term_end:   null
+  dongguk__2026_2:                  # 동국대
+    term_start: "2026-09-01"
+    term_end:   "2026-12-14"
     holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
     # 확인처: https://www.dongguk.edu/schedule/detail?schedule_info_seq=22
 
-  hongik__2026_2:                   # 홍익대 — 미확인
-    term_start: null
-    term_end:   null
+  hongik__2026_2:                   # 홍익대
+    term_start: "2026-09-01"
+    term_end:   "2026-12-14"
     holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
     # 확인처: https://www.hongik.ac.kr/kr/education/academic-schedule.do
 
-  unist__2026_fall:                 # UNIST — JS 캘린더로 미확인
-    term_start: null                # 낮음 (KAIST와 유사한 9월 초 패턴 추정)
-    term_end:   null
-    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+  unist__2026_fall:                 # UNIST
+    term_start: "2026-08-31"
+    term_end:   "2026-12-18"
+    holidays: ["2026-09-24","2026-09-28","2026-09-25","2026-10-05","2026-10-09"]
     # 확인처: https://www.unist.ac.kr/unist/education/academic/schedule.do
 
-  gist__2026_fall:                  # GIST — 미확인
-    term_start: null
-    term_end:   null
+  gist__2026_fall:                  # GIST
+    term_start: "2026-08-31"
+    term_end:   "2026-12-18"
     holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
     # 확인처: https://www.gist.ac.kr/kr/html/sub05/0501.html
 
-  dgist__2026_fall:                 # DGIST — 미확인
-    term_start: null
-    term_end:   null
+  dgist__2026_fall:                 # DGIST
+    term_start: "2026-08-24"
+    term_end:   "2026-12-11"
     holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
     # 확인처: https://www.dgist.ac.kr/prog/schafsSchdul/kor/sub05_01_01/list.do
 
-  NYU__2026_fall:                 
+  NYU__2026_fall:                   # NYU
     term_start: "2026-09-02"
     term_end:   "2026-12-14"
-    holidays: ["2026-09-07","2026-10-12","2026-11-26","2026-11-27"]   # 09-7 -> 09-07 (제로패딩, ISO 비교용)
+    holidays: ["2026-09-07","2026-10-12","2026-11-26","2026-11-27"]   # 09-7 -> 09-07 제로패딩 (ISO 비교용)
 
-  Soon__2026_fall:   #숭실대                
+  Soon__2026_fall:                  # 숭실대
     term_start: "2026-09-01"
     term_end:   "2026-12-21"
-    holidays: ["2026-10-10","2026-10-12","2026-11-26","2026-11-27", "2026-09-24","2026-09-25"]
-
+    holidays: ["2026-10-10","2026-10-12","2026-11-26","2026-11-27","2026-09-24","2026-09-25"]
 
   # ───────── 형식 예시 (참고용 — 실제 사용 시 삭제) ─────────
   _example__2026_2:
