@@ -89,12 +89,17 @@ def exact_ok(pred: Optional[str], gold: Optional[str]) -> Optional[bool]:
 
 
 def ours_for_excel_fields(source_text: str, doc_id: str) -> dict[str, object]:
-    """Run OUR rule+subsystem extractor on raw text and map to the 13 Excel
-    fields (shared by the coverage comparison and the method comparison)."""
-    from ..extract.field_router import route_document
+    """Run OUR extractor on FLAT TEXT (pseudo-tables) and map to Excel fields."""
     from ..extract.normalize_doc import normalize_text_blob
 
-    doc = normalize_text_blob(doc_id, source_text)
+    return ours_fields_from_doc(normalize_text_blob(doc_id, source_text))
+
+
+def ours_fields_from_doc(doc) -> dict[str, object]:
+    """Run OUR rule+subsystem extractor on a NormalizedDoc (real tables when the
+    doc came from the corpus) and map to the Excel field names."""
+    from ..extract.field_router import route_document
+
     out = route_document(doc)
     rule, sub = out.get("rule", {}), out.get("subsystem", {})
 

@@ -94,7 +94,10 @@ def main() -> int:
         if not gold_s and not _norm(ref):
             empty_confirmed += 1                      # both empty: exported, NOT scored
             continue
-        agree = _norm(gold_s) == _norm(ref)
+        # field-aware equality (segment sets for serialized fields) so notation
+        # order differences don't masquerade as edits/anchoring
+        from syllabus_classifier.eval.method_compare import values_match
+        agree = values_match(field, ref, gold_s) if (gold_s and _norm(ref)) else False
         if is_blind:
             stats["blind"]["n"] += 1
             stats["blind"]["agree"] += int(agree)

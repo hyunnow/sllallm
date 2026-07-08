@@ -23,7 +23,9 @@ from typing import Optional
 
 from .excel_harness import _norm
 
-MULTI_SEGMENT_FIELDS = {"수업시간", "이벤트", "무기한과제", "주차별내용"}
+# fields whose ` ; ` segments are an unordered set — 연락처 included: the
+# email/phone order is serialization convention, not meaning.
+MULTI_SEGMENT_FIELDS = {"수업시간", "이벤트", "무기한과제", "주차별내용", "연락처"}
 HIGH_RISK_FIELDS = {"수업시간", "이벤트"}
 
 

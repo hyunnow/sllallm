@@ -84,22 +84,7 @@ class KBResolver:
                 needs_review=True,
                 review_reason=f"period timetable not found for '{key}'",
             )
-        periods = table.get("periods", {})
-        starts, ends = [], []
-        for n in period_numbers:
-            slot = periods.get(str(n))
-            if not slot:
-                return ResolvedTime(
-                    needs_review=True,
-                    review_reason=f"period {n} not in timetable '{key}'",
-                )
-            starts.append(slot[0])
-            ends.append(slot[1])
-        return ResolvedTime(
-            start_time=min(starts),
-            end_time=max(ends),
-            resolved_by="period_timetable_kb",
-        )
+        return _resolve_periods_from_table(table, period_numbers, key)
 
     # --- week N (+weekday) -> date ----------------------------------------
     def resolve_week(self, calendar_key: str, week: int, weekday: str) -> ResolvedDate:
@@ -109,6 +94,16 @@ class KBResolver:
                 needs_review=True,
                 review_reason=f"academic calendar / term_start missing for '{calendar_key}'",
             )
+        # user safety rule (2026-07): only a HIGH-confidence term_start may
+        # produce definitive dates. Entries marked medium/low flow to
+        # needs_review even though they carry a value.
+        conf = str(cal.get("term_start_confidence", "high")).lower()
+        if conf not in ("high", "높음"):
+            return ResolvedDate(
+                needs_review=True,
+                review_reason=f"term_start for '{calendar_key}' is {conf}-confidence; "
+                              "definitive conversion requires high",
+            )
         wd = _WEEKDAY_INDEX.get(weekday)
         if wd is None:
             return ResolvedDate(needs_review=True, review_reason=f"unknown weekday '{weekday}'")
@@ -117,7 +112,8 @@ class KBResolver:
         week1_monday = term_start - timedelta(days=term_start.weekday())
         target = week1_monday + timedelta(weeks=week - 1, days=wd)
 
-        holidays = set(cal.get("holidays", []))
+        # 휴강일은 국가공휴일(holidays)과 학교휴강일(school_holidays)의 합집합
+        holidays = set(cal.get("holidays", [])) | set(cal.get("school_holidays", []))
         iso = target.isoformat()
         if iso in holidays:
             makeup = (cal.get("makeup_days") or {}).get(iso)
@@ -227,15 +223,23 @@ def resolve_period_reference(
     )
 
 
+def _norm_hhmm(t: str) -> str:
+    """'9:00' -> '09:00' — zero-pad so string min/max compares correctly."""
+    h, _, m = str(t).partition(":")
+    return f"{int(h):02d}:{int(m or 0):02d}"
+
+
 def _resolve_periods_from_table(table: dict, period_numbers: list[int], key: str) -> ResolvedTime:
     periods = table.get("periods", {})
     starts, ends = [], []
     for n in period_numbers:
-        slot = periods.get(str(n))
+        # some schools use fractional half-periods ("1.0"/"1.5", 동국대);
+        # an integer reference "1교시" must match the "1.0" key there.
+        slot = periods.get(str(n)) or periods.get(f"{float(n):.1f}")
         if not slot:
             return ResolvedTime(needs_review=True, review_reason=f"period {n} not in timetable '{key}'")
-        starts.append(slot[0])
-        ends.append(slot[1])
+        starts.append(_norm_hhmm(slot[0]))
+        ends.append(_norm_hhmm(slot[1]))
     return ResolvedTime(start_time=min(starts), end_time=max(ends), resolved_by="period_timetable_kb")
 
 

@@ -10,28 +10,180 @@
 #
 # HUMAN TODO: fill term_start/term_end/holidays for the schools you serve,
 # for 2026-여름 (current) and 2026-2학기 (upcoming) only.
-calendars:
-  yonsei__2026_summer:
-    term_start: null
-    term_end: null
-    holidays: []
-  yonsei__2026_2:
-    term_start: null
-    term_end: null
-    holidays: []
-  hanyang__2026_2:
-    term_start: null
-    term_end: null
-    holidays: []
-  korea__2026_2:
-    term_start: null
-    term_end: null
-    holidays: []
+# academic_calendars.yaml — 2026학년도 (2학기 중심 + 확인된 여름학기)
+# 작성일: 2026-07-07 / 각 항목에 출처·신뢰도(높음/중간/낮음) 주석
+# 규칙: term_start가 '높음'이 아닌 항목은 resolver에서 확정 변환에 쓰지 말 것(needs_review).
+#       null = 공식 확인 실패. 낮음/추정값은 절대 확정 이벤트 생성에 사용 금지.
+# 공휴일 참고: 2026 추석연휴 9/24(목)~9/26(토), 개천절 10/3(토)→대체 10/5(월),
+#              한글날 10/9(금), 성탄절 12/25(금). 토요일 공휴일은 주중수업 기준 제외 가능.
 
-  # --- format example (synthetic values; replace or remove) ---
+calendars:
+
+  # ───────── 확정 그룹 (term_start 높음 — 자동 변환 사용 가능) ─────────
+
+  snu__2026_2:                      # 서울대 — 공식 학사일정 페이지에서 전체 확인
+    term_start: "2026-09-01"        # 높음 (제2학기 시작·개강 9/1 화)
+    term_end:   "2026-12-14"        # 높음 (종강 12/14 월, 보강기간 12/15~21)
+    weeks: 15
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    # 출처: https://www.snu.ac.kr/academics/resources/calendar
+
+  korea__2026_2:                    # 고려대 — 공식 2학기 행사일정표 전체 확인
+    term_start: "2026-09-01"        # 높음 (개강 9/1 화)
+    term_end:   "2026-12-18"        # 높음 (종강 12/18 금, 16주차)
+    weeks: 16
+    midterm:  ["2026-10-20","2026-10-26"]   # 높음
+    final:    ["2026-12-14","2026-12-18"]   # 높음
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    # 참고: 정기 고연전 9/18~19 (공식 휴일 아님, 관행상 휴강 가능 — 확정 제외에 쓰지 말 것)
+    # 출처: https://registrar.korea.ac.kr/eduinfo/affairs/schedule.do?cYear=2026&hakGi=2
+
+  skku__2026_2:                     # 성균관대 — 공식 학사일정 JSON 전체 확인
+    term_start: "2026-08-31"        # 높음 (2학기 개시일/개강 8/31 월)
+    term_end:   "2026-12-18"        # 높음 (종강 12/18, 수업일수 4/4)
+    weeks: 16
+    midterm:  ["2026-10-19","2026-10-23"]   # 높음
+    final:    ["2026-12-14","2026-12-18"]   # 높음
+    holidays: ["2026-09-24","2026-09-25","2026-09-25","2026-10-05","2026-10-09"]
+    school_holidays: ["2026-09-25","2026-09-28"]  # 건학기념일 9/25, 공부자탄강일 9/28 (높음, 성균관대 고유)
+    # 출처: https://www.skku.edu/skku/edu/bachelor/ca_de_schedule.do
+
+  sogang__2026_2:                   # 서강대 — 공식 2026학년도 학사일정 전체 확인
+    term_start: "2026-09-01"        # 높음 (개강 9/1 화)
+    term_end:   "2026-12-21"        # 높음 (학기말시험 12/15~21 종료일 기준)
+    weeks: 16
+    midterm:  ["2026-10-20","2026-10-26"]   # 높음
+    final:    ["2026-12-15","2026-12-21"]   # 높음
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    school_holidays: ["2026-11-20"]  # 스터디데이_수시 (휴강일, 높음)
+    # 출처: https://www.sogang.ac.kr/ko/academic-support/calendar
+
+  postech__2026_2:                  # 포항공대 — 공식 연간일정 전체 확인
+    term_start: "2026-09-07"        # 높음 (2학기 개강 9/7 — 타교보다 1주 늦음 주의)
+    term_end:   "2026-12-24"        # 높음 (기말고사 12/21~24 종료, 동기방학 12/28~)
+    weeks: 16
+    midterm:  ["2026-10-26","2026-10-30"]   # 높음
+    final:    ["2026-12-21","2026-12-24"]   # 높음
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    school_holidays: ["2026-09-18","2026-09-19","2026-12-03"]
+    # POSTECH-KAIST 학생대제전 9/18~19(학사과정 휴강), 개교기념일 12/3 (높음)
+    # 출처: https://postech.ac.kr/kor/college-life/academic_schedule.do?mode=list&selectedYear=2026
+
+  ewha__2026_2:                     # 이화여대 — 공식 2026 학사일정 전체 확인
+    term_start: "2026-09-01"        # 높음 (2학기 개강 9/1 화)
+    term_end:   "2026-12-21"        # 높음 (2학기 종강 12/21 월)
+    weeks: 16
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    # 교양과목 중간시험 10/21~23 (높음, 교양만 — 전공 중간은 과목별)
+    # 출처: https://www.ewha.ac.kr/ewha/bachelor/calendar2026.do
+
+  ewha__2026_summer:                # 이화여대 여름계절학기
+    term_start: "2026-06-29"        # 높음
+    term_end:   "2026-07-22"        # 높음 (월-목 수업)
+    holidays: ["2026-07-17"]        # 제헌절 — 공휴일 아님(2026 기준 무급휴일 아님), 확인 필요 시 제거
+    # 출처: 위 이화여대 페이지
+
+  yonsei__2026_summer:              # 연세대 여름계절제 — 공식 확인
+    term_start: "2026-06-29"        # 높음 (여름계절제 수업시작)
+    term_end:   "2026-07-21"        # 높음 (여름계절제 수업 종료)
+    holidays: []
+    # 출처: https://www.yonsei.ac.kr/sc/373/subview.do
+
+  kaist__2026_fall:                 # KAIST — 개강 확정, 종강 추정
+    term_start: "2026-08-31"        # 높음 (가을학기 개강 8/31 월, 경영대학 공식 일정)
+    term_end:   "2026-12-18"        # 중간 (전산학부 페이지상 12/22 겨울학기 개강 직전 금요일 추정 — 본교 공식 미확인)
+    weeks: 16
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    school_holidays: ["2026-09-18","2026-09-19"]  # KAIST-POSTECH 학생대제전 (중간 — POSTECH측 공식일정 기준)
+    # 출처: https://www.business.kaist.ac.kr/_prog/adcal/ (개강),
+    #        https://cs.kaist.ac.kr/education/academiccalendar (종강 부근)
+    # 본교 페이지는 봇 차단: https://www.kaist.ac.kr/kr/html/edu/03110101.html 에서 직접 확인 권장
+
+  # ───────── 부분 확정 그룹 (개강 중간 신뢰 — 확정 변환에 쓰지 말 것) ─────────
+
+  yonsei__2026_2:                   # 연세대 — 2학기 개강일 페이지 미노출(JS 탭)
+    term_start: "2026-09-01"        # 중간 (수강신청 8/10~14, 등록 8/21~27, 학위수여식 8/28 → 예년 패턴상 9/1 유력. 직접 확인 실패)
+    term_start_confidence: medium   # <- resolver가 읽는 필드: high가 아니므로 확정 변환에 사용되지 않음
+    term_end:   null                # 낮음 (미확인 — 1학기 패턴상 12월 중순 기말이나 확정 불가)
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    # 출처: https://www.yonsei.ac.kr/sc/373/subview.do (페이지에서 '다음학기' 탭 수동 클릭 필요)
+
+  # ───────── 미확정 그룹 (null — 공식 확인 실패, needs_review 경로) ─────────
+  # 아래 학교들은 공식 페이지가 JS 캘린더/PDF여서 자동 수집 실패.
+  # 사람이 아래 출처 링크에서 직접 확인해 채울 것. 국가공휴일만 선기입.
+
+  hanyang__2026_2:                  # 한양대 — JS 캘린더, PDF만 제공
+    term_start: null                # 낮음 (예년 패턴 9/1이나 미확인)
+    term_end:   null
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    # 확인처: https://www.hanyang.ac.kr/web/www/-33 (수동), 대학원 PDF: http://www.grad.hanyang.ac.kr
+
+  cau__2026_2:                      # 중앙대 — 학부 일정 페이지 접근했으나 표 미노출
+    term_start: null                # 낮음 (예년 패턴 9/1 추정)
+    term_end:   null
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    # 확인된 것: 하계 계절학기 6/24~7/15 (높음, 기계공학부 공지)
+    # 확인처: https://www.cau.ac.kr/cms/FR_CON/index.do?MENU_ID=590
+
+  khu__2026_2:                      # 경희대 — 본교 학부 2학기 미확인 (사이버대와 혼동 주의!)
+    term_start: null                # 낮음
+    term_end:   null
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    # 확인처: https://haksa.khu.ac.kr/nhaksa/user/contents/view.do?menuNo=21200042
+    # 주의: 검색 시 경희사이버대(khcu) 일정이 섞여 나옴 — 절대 혼용 금지
+
+  hufs__2026_2:                     # 한국외대 — 미확인
+    term_start: null
+    term_end:   null
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    # 확인처: https://dep.hufs.ac.kr/hufs/11360/subview.do
+
+  uos__2026_2:                      # 서울시립대 — 미확인
+    term_start: null
+    term_end:   null
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    # 확인처: https://www.uos.ac.kr/korCalendarYear/list.do?list_id=CA1
+
+  konkuk__2026_2:                   # 건국대 — 미확인
+    term_start: null
+    term_end:   null
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    # 확인처: https://www.konkuk.ac.kr/konkuk/2161/subview.do
+
+  dongguk__2026_2:                  # 동국대 — 미확인
+    term_start: null
+    term_end:   null
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    # 확인처: https://www.dongguk.edu/schedule/detail?schedule_info_seq=22
+
+  hongik__2026_2:                   # 홍익대 — 미확인
+    term_start: null
+    term_end:   null
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    # 확인처: https://www.hongik.ac.kr/kr/education/academic-schedule.do
+
+  unist__2026_fall:                 # UNIST — JS 캘린더로 미확인
+    term_start: null                # 낮음 (KAIST와 유사한 9월 초 패턴 추정)
+    term_end:   null
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    # 확인처: https://www.unist.ac.kr/unist/education/academic/schedule.do
+
+  gist__2026_fall:                  # GIST — 미확인
+    term_start: null
+    term_end:   null
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    # 확인처: https://www.gist.ac.kr/kr/html/sub05/0501.html
+
+  dgist__2026_fall:                 # DGIST — 미확인
+    term_start: null
+    term_end:   null
+    holidays: ["2026-09-24","2026-09-25","2026-10-05","2026-10-09"]
+    # 확인처: https://www.dgist.ac.kr/prog/schafsSchdul/kor/sub05_01_01/list.do
+
+  # ───────── 형식 예시 (참고용 — 실제 사용 시 삭제) ─────────
   _example__2026_2:
     term_start: "2026-09-01"
     term_end: "2026-12-18"
     weeks: 16
-    holidays: ["2026-10-03", "2026-10-09"]
+    holidays: ["2026-10-05", "2026-10-09"]
     makeup_days: {}

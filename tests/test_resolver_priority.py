@@ -49,3 +49,29 @@ def test_period_kb_then_needs_review():
     assert ok.resolved_by == "period_timetable_kb" and ok.end_time == "11:50"
     miss = resolve_period_reference([2], timetable_key="unknown_school", kb=kb())
     assert miss.start_time is None and miss.needs_review
+
+
+def test_medium_confidence_term_start_is_not_used():
+    # user rule (2026-07): only HIGH-confidence term_start may produce dates.
+    cal = {"y__2026_2": {"term_start": "2026-09-01", "term_start_confidence": "medium",
+                         "holidays": []}}
+    r = KBResolver(timetables={}, calendars=cal).resolve_week("y__2026_2", 2, "Tuesday")
+    assert r.resolved_date is None and r.needs_review
+    assert "medium" in (r.review_reason or "")
+
+
+def test_fractional_half_periods_and_unpadded_times():
+    # 동국대: fractional period keys ("5.0") + single-digit hours ("9:00")
+    tt = {"dongguk": {"periods": {"1.0": ["9:00", "9:30"], "1.5": ["9:30", "10:00"],
+                                  "5.0": ["13:00", "13:30"]}}}
+    r = resolve_period_reference([1], timetable_key="dongguk", kb=KBResolver(timetables=tt, calendars={}))
+    assert (r.start_time, r.end_time) == ("09:00", "09:30")   # zero-padded
+    r5 = resolve_period_reference([5], timetable_key="dongguk", kb=KBResolver(timetables=tt, calendars={}))
+    assert r5.start_time == "13:00"
+
+
+def test_school_holidays_count_as_exclusions():
+    cal = {"s__2026_2": {"term_start": "2026-09-01", "holidays": [],
+                         "school_holidays": ["2026-09-08"]}}
+    r = KBResolver(timetables={}, calendars=cal).resolve_week("s__2026_2", 2, "Tuesday")
+    assert r.is_holiday and r.needs_review        # 학교 휴강일도 제외 대상
