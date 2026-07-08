@@ -114,8 +114,15 @@ def ours_fields_from_doc(doc) -> dict[str, object]:
         return " ; ".join(parts) or None
 
     def class_time():
-        if rule.get("meeting.raw_time"):
-            return rule["meeting.raw_time"]
+        from ..kb.resolver import timetable_key_for
+        from ..normalize.class_time import to_notation
+
+        raw = rule.get("meeting.raw_time")
+        if raw:
+            # convert to the notation contract when confident; keep raw otherwise
+            # (a wrong conversion must never replace a right raw string)
+            conv = to_notation(raw, timetable_key=timetable_key_for(rule.get("meta.school")))
+            return conv or raw
         evs = sub.get("meeting.events") or []
         return " ; ".join(e["raw"] for e in evs) or None
 

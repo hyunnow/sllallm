@@ -50,6 +50,15 @@ def test_undated_assignment_goes_to_undated_list():
     assert undated == ["Reflection Paper"]
 
 
+def test_generic_rubric_titles_are_not_undated_assignments():
+    doc = "성적: 과제 20% Assignments Attendance, Presentation, and Class Participation IC-PBL Term Project"
+    raw = [{"title": t, "type": "assignment", "date_raw": None} for t in
+           ["Assignments", "과제", "Attendance, Presentation, and Class Participation",
+            "IC-PBL Term Project"]]
+    _, undated = risk_gate(raw, doc)
+    assert undated == ["IC-PBL Term Project"]     # only the specific title survives
+
+
 def test_uncertain_reference_kind():
     dated, _ = risk_gate([{"title": "Final Exam", "type": "exam", "date_raw": "추후 공지"}],
                          DOC + "\n기말: 추후 공지")

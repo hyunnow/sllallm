@@ -243,6 +243,20 @@ def _resolve_periods_from_table(table: dict, period_numbers: list[int], key: str
     return ResolvedTime(start_time=min(starts), end_time=max(ends), resolved_by="period_timetable_kb")
 
 
+# canonical school name (school_dictionary) -> period-timetable key
+TIMETABLE_KEY_BY_SCHOOL = {
+    "연세대학교": "yonsei_seoul",
+    "건국대학교": "konkuk",
+    "이화여자대학교": "ewha",
+    "홍익대학교": "hongik",
+    "동국대학교": "dongguk",
+}
+
+
+def timetable_key_for(school: "str | None") -> Optional[str]:
+    return TIMETABLE_KEY_BY_SCHOOL.get(school or "")
+
+
 # module-level convenience wrappers (use the seed configs)
 def resolve_period(school: str, term_type: str, period_numbers: list[int]) -> ResolvedTime:
     return KBResolver().resolve_period(school, term_type, period_numbers)

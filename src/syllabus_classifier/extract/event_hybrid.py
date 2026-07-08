@@ -80,6 +80,23 @@ def _evidenced(iso: str, doc_dates: set[str]) -> bool:
     return len(iso) == 10 and iso[5:] in doc_dates      # "2026-08-06" vs "8/6" in text
 
 
+# Generic grading-section words are NOT undated-assignment titles ("Assignments",
+# "과제", "Attendance, Presentation, and Class Participation"). A title that is
+# nothing but these words is a rubric header the LLM over-promoted — measured
+# fabrication source on gold-absent cells (batch-2 fab 83%).
+_GENERIC_ASSIGN_WORDS = {
+    "과제", "과제물", "숙제", "출석", "발표", "참여", "토론", "퀴즈",
+    "assignment", "assignments", "homework", "hw", "attendance", "presentation",
+    "presentations", "participation", "quiz", "quizzes", "class", "regular",
+    "optional", "and", "or", "etc",
+}
+
+
+def _is_generic_assignment_title(title: str) -> bool:
+    words = re.findall(r"[a-zA-Z가-힣]+", (title or "").lower())
+    return bool(words) and all(w in _GENERIC_ASSIGN_WORDS for w in words)
+
+
 def risk_gate(raw_events: list[dict], text: str) -> tuple[list[dict], list[str]]:
     """Apply date_kind + no-fabrication rules to LLM surface output.
 
@@ -102,7 +119,7 @@ def risk_gate(raw_events: list[dict], text: str) -> tuple[list[dict], list[str]]
             continue
 
         if not date_raw:
-            if etype == "assignment" and title:
+            if etype == "assignment" and title and not _is_generic_assignment_title(title):
                 undated.append(title)
             continue
 

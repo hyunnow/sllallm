@@ -49,6 +49,38 @@ schools:
     canonical: "세종대학교"
     aliases: ["세종대", "Sejong University"]
     campuses: []
+  ewha:
+    canonical: "이화여자대학교"
+    aliases: ["이화여대", "Ewha Womans University", "Ewha"]
+    campuses: []
+  konkuk:
+    canonical: "건국대학교"
+    aliases: ["건국대", "Konkuk University"]
+    campuses: ["서울", "글로컬"]
+  dongguk:
+    canonical: "동국대학교"
+    aliases: ["동국대", "Dongguk University"]
+    campuses: ["서울", "WISE"]
+  soongsil:
+    canonical: "숭실대학교"
+    aliases: ["숭실대", "Soongsil University"]
+    campuses: []
+  kyunghee:
+    canonical: "경희대학교"
+    aliases: ["경희대", "Kyung Hee University"]   # 경희사이버대와 혼동 금지 (v7 주의)
+    campuses: ["서울", "국제"]
+  snu:
+    canonical: "서울대학교"
+    aliases: ["서울대", "Seoul National University", "SNU"]
+    campuses: []
+  skku:
+    canonical: "성균관대학교"
+    aliases: ["성균관대", "Sungkyunkwan University", "SKKU"]
+    campuses: ["인문사회", "자연과학"]
+  sogang:
+    canonical: "서강대학교"
+    aliases: ["서강대", "Sogang University"]
+    campuses: []
 
 # Generic patterns that mark a token as a school (not a department):
 school_patterns: ["대학교$", "University"]
