@@ -50,7 +50,7 @@ NOTATION = (
     "연락처: `email ; phone` (있는 것만, 이메일 우선).\n"
     "대학=학교(학과 아님) — 본문에 없으면 이메일 도메인·파일명으로 간접추론 허용(2026-07-10 정책).\n"
     "학년도=학사연도(인쇄/출력일 아님), 학기는 계절로: {봄,여름,가을,겨울} (숫자 금지 — B3-039).\n"
-    "값이 원문에 없고 간접추론도 불가하면 반드시 빈칸 — 지어내지 말 것."
+    "값이 원문에 없고 간접추론도 불가하면 빈칸 또는 'null' — 지어내지 말 것."
 )
 
 _SYSTEM = (
@@ -109,7 +109,20 @@ def draft_one(client, model: str, row: dict) -> dict:
         timeout=60,
     )
     data = json.loads(resp.choices[0].message.content)
-    return {f: (str(data[f]).strip() if data.get(f) not in (None, "", []) else None) for f in FIELDS}
+    out = {}
+    for f in FIELDS:
+        v = str(data[f]).strip() if data.get(f) not in (None, "", []) else None
+        if v is not None:
+            # 배치4 편집률 인플레 원인: LLM이 없는 값을 문자열 "null"/라벨명으로 채워
+            # 검수자가 수작업 제거 ("email ; null", "e-메일 ; 전화번호"). 세그먼트
+            # 단위로 걷어내고 빈 값은 None으로.
+            segs = [s.strip() for s in v.split(";")]
+            segs = [s for s in segs
+                    if s and s.lower() not in ("null", "none", "n/a", "-")
+                    and not re.fullmatch(r"(?:e-?\s?(?:mail|메일)|이메일|email|전화번호|phone|tel)", s, re.IGNORECASE)]
+            v = " ; ".join(segs) or None
+        out[f] = v
+    return out
 
 
 def corpus_rows(n: int, seed: int, exclude_doc_ids: set = frozenset(), id_prefix: str = "B2") -> list[dict]:

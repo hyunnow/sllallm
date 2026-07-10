@@ -61,9 +61,14 @@ def _school_canon() -> dict:
 # 수업시간 세그먼트 동치: "MON WED 10:30-11:45"(요일 묶음, 문서 표기)와
 # "Mon 10:30-11:45 ; Wed 10:30-11:45"(요일별 분해, 우리 표기)는 같은 사실 —
 # 요일 나열+단일 시간범위 형태만 결정론 전개한다 (B3-028 정정에서 확립).
+# 요일 단어형(Mondays/Monday/월요일)과 대시 변형(–, —, ~)도 같은 사실의 표기
+# 차이라 3글자/1글자 canonical로 접는다 (B4-024: gold "Mondays 16:55–19:35").
 _CT_DAY = r"(?:mon|tue|wed|thu|fri|sat|sun|월|화|수|목|금|토|일)"
-_CT_RANGE = r"\d{1,2}:\d{2}\s*[-~–]\s*\d{1,2}:\d{2}"
+_CT_DAY_WORD = re.compile(
+    r"\b(mon|tues?|wed(?:nes)?|thur?s?|fri|sat(?:ur)?|sun)(?:day)?s?\b", re.IGNORECASE)
+_CT_RANGE = r"\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}"
 _CT_MULTI_DAY = re.compile(rf"^({_CT_DAY}(?:[\s/,·]+{_CT_DAY})+)[\s:]*({_CT_RANGE})$", re.IGNORECASE)
+_CT_DAY3 = {"tues": "tue", "wednes": "wed", "thur": "thu", "thurs": "thu", "satur": "sat"}
 
 
 def _class_time_segments(value) -> set:
@@ -72,6 +77,9 @@ def _class_time_segments(value) -> set:
         s = s.strip()
         if not s:
             continue
+        s = re.sub(r"[–—~]", "-", s)                       # dash variants
+        s = _CT_DAY_WORD.sub(lambda m: _CT_DAY3.get(m.group(1).lower(), m.group(1).lower()[:3]), s)
+        s = re.sub(r"([월화수목금토일])요일", r"\1", s)
         m = _CT_MULTI_DAY.match(s)
         if m:
             days = re.findall(_CT_DAY, m.group(1), re.IGNORECASE)
@@ -91,6 +99,18 @@ def values_match(field: str, pred, gold) -> bool:
         return c.get(p, p) == c.get(g, g)
     if field == "수업시간":
         return _class_time_segments(pred) == _class_time_segments(gold)
+    if field == "주차별내용":
+        # 구두점·어순·선행 0("Week 01")은 표기 차이 — 세그먼트를 단어 multiset으로
+        # 비교한다. 단어 자체가 다르면(누락된 챕터, 다른 주제) 여전히 불일치.
+        def wp(v):
+            out = set()
+            for s in _norm(v).split(";"):
+                s = re.sub(r"[\W_]+", " ", s)
+                s = re.sub(r"\b0+(\d)", r"\1", s).strip()
+                if s:
+                    out.add(" ".join(sorted(s.split())))
+            return out
+        return wp(pred) == wp(gold)
     if field in MULTI_SEGMENT_FIELDS:
         p = {s.strip() for s in _norm(pred).split(";") if s.strip()}
         g = {s.strip() for s in _norm(gold).split(";") if s.strip()}

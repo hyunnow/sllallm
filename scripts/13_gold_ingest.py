@@ -73,6 +73,10 @@ def main() -> int:
 
     for sid, field, shown_draft, gold, ok, memo in (r[:6] for r in rows if r and r[0]):
         gold_s = _render(gold).strip()
+        # 검수자 관용 표기: 정답 칸의 'null' 류는 "명시적으로 없음" — 빈칸과 동일
+        # (배치4에서 17셀 관찰; 이벤트 표기의 null에서 옮아온 습관이라 공식 수용)
+        if gold_s.lower() in ("null", "none", "없음", "해당없음", "n/a", "-"):
+            gold_s = ""
         if _norm(ok) not in CONFIRM_MARKS:
             # visible-but-unrecognized review activity must not vanish silently
             if gold_s or _render(ok).strip():

@@ -180,3 +180,73 @@ def test_b3_028_class_time_day_group_equivalence():
     assert values_match("수업시간", "Mon 10:30-11:45 ; Wed 10:30-11:45", "MON WED 10:30-11:45")
     assert values_match("수업시간", "월 15:00-16:15 ; 수 15:00-16:15", "월 수 15:00-16:15")
     assert not values_match("수업시간", "Mon 10:30-11:45", "MON WED 10:30-11:45")
+
+
+# --- 배치4 메모 대응 (2026-07-10) --------------------------------------------
+
+def _doc_with_tables(*tables):
+    from syllabus_classifier.extract.normalize_doc import NormalizedDoc, Page
+    return NormalizedDoc(doc_id="t", pages=[Page(page_no=1, text="", tables=list(tables))])
+
+
+def test_b4_037_yiss_week_cell_with_date_range_and_chapter_extras():
+    # YISS형: "WEEK1\n(June 29 to July 2, 2026)" 주차 셀 + ASSIGNMENTS 열의 챕터.
+    # 챕터는 주차 내용에 포함(B4-035/037 gold), 'Problem set'은 범주 라벨이라 제외,
+    # 'Midterm'은 이벤트로 승격.
+    from syllabus_classifier.extract.normalize_doc import Table
+    from syllabus_classifier.extract.field_router import extract_subsystem
+
+    t = Table(header=["WEEK", "CONTENTS", "ASSIGNMENTS", ""],
+              rows=[["WEEK1\n(June 29 to July 2, 2026)", "Preference,\nUtility function", "CH 1: Consumption\ntheory\nProblem set", ""],
+                    ["WEEK 2\n(July 6 to July 9, 2026)", "Comparative statics", "CH 1: Consumption theory", "Midterm"]])
+    sub = extract_subsystem(_doc_with_tables(t))
+    topics = {r["week"]: r["topic"] for r in sub["schedule.weekly_plan"]}
+    assert topics[1] == "Preference, Utility function, CH 1: Consumption theory"
+    assert "Problem set" not in topics[1]
+    assert topics[2] == "Comparative statics, CH 1: Consumption theory"
+    assert any(e["raw_reference"] == "Week 2" for e in sub["schedule.exams"])
+
+
+def test_b4_037_lone_week_row_promoted_from_header_and_boundary_gap():
+    # 페이지 분할로 홀로 남은 "WEEK6" 행이 header로 오분류된 표 + week 5 유실:
+    # 경계 갭은 방출 유지(needs_review 플래그만), 행은 병합된다.
+    from syllabus_classifier.extract.normalize_doc import Table
+    from syllabus_classifier.extract.table_plan import parse_weekly_plan
+
+    main = Table(header=["WEEK", "CONTENTS", "", ""],
+                 rows=[[f"WEEK{i}\n(2026)", f"topic {i}", "", ""] for i in (1, 2, 3, 4)])
+    lone = Table(header=["WEEK6\n(August 3 to August 5,\n2026)", "Public Goods", "CH6 Public Goods", "Final Exam"],
+                 rows=[])
+    plan = parse_weekly_plan(_doc_with_tables(main, lone))
+    weeks = sorted(r.week for r in plan.rows if r.week is not None)
+    assert weeks == [1, 2, 3, 4, 6]
+    assert plan.total_weeks == 6 and plan.issues == ["week_gap"] and plan.needs_review
+
+
+def test_b4_029_exam_only_week_row_leaves_weekly_content():
+    # 'Midterm week' 행은 이벤트 소관 — 주차별내용 직렬화에서 제외 (B4-029 gold)
+    from syllabus_classifier.extract.normalize_doc import Table
+    from syllabus_classifier.extract.field_router import extract_subsystem
+
+    t = Table(header=["주차", "수업내용"],
+              rows=[["1", "Introduction"], ["2", "Sampling"], ["3", "Midterm week"], ["4", "Regression"]])
+    sub = extract_subsystem(_doc_with_tables(t))
+    topics = [r["topic"] for r in sub["schedule.weekly_plan"]]
+    assert topics == ["Introduction", "Sampling", None, "Regression"]
+    assert any(e["raw_reference"] == "Week 3" for e in sub["schedule.exams"])
+
+
+def test_b4_035_undated_duplicates_of_scheduled_items_suppressed():
+    from syllabus_classifier.extract.event_hybrid import suppress_scheduled
+
+    dated = [{"title": "Case (#1) report", "kind": "assignment"}]
+    weekly = [{"topic": "Case II: Crocs, Problem set review"}]
+    out = suppress_scheduled(
+        ["Case (#1) report", "Problem set", "Problem set", "Field essay"], dated, weekly)
+    assert out == ["Field essay"]
+
+
+def test_b4_024_class_time_day_word_and_dash_equivalence():
+    assert values_match("수업시간", "Mon 16:55-19:35", "Mondays 16:55–19:35")
+    assert values_match("수업시간", "화 09:00-10:15", "화요일 09:00~10:15")
+    assert not values_match("수업시간", "Mon 16:55-19:35", "Tuesdays 16:55–19:35")

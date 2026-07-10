@@ -82,14 +82,16 @@ def _evidenced(iso: str, doc_dates: set[str]) -> bool:
     return len(iso) == 10 and iso[5:] in doc_dates      # "2026-08-06" vs "8/6" in text
 
 
-# NON-DELIVERABLE rubric words are not undated-assignment titles ("Attendance,
-# Presentation, and Class Participation" is a rubric header, not a deliverable).
-# 2026-07-10 통일 규칙: 평가표 안 과제류 산출물(homework/과제 등)은 무기한과제에
-# 포함한다 — deliverable 단어들은 이 드롭셋에서 제외 (gold: "Homework", "SQL 과제").
+# 범주형 rubric 라벨은 무기한과제 제목이 아니다. 배치4 gold가 경계를 그었다:
+# 'Homework'(단일 산출물 관용명)는 인정, 'Individual Assignments'/'과제'/'Report'/
+# 'Team project' 같은 범주·복수 라벨은 거부 — homework/hw/숙제만 통과 예외로 두고
+# 전 단어가 이 셋에 속하면 드롭. ('SQL 과제', '서평 보고서'는 고유어가 있어 통과.)
 _GENERIC_ASSIGN_WORDS = {
-    "출석", "발표", "참여", "토론", "퀴즈",
+    "출석", "발표", "참여", "토론", "퀴즈", "과제", "과제물", "보고서",
     "attendance", "presentation", "presentations", "participation",
     "quiz", "quizzes", "class", "regular", "optional", "and", "or", "etc",
+    "assignment", "assignments", "individual", "weekly", "team",
+    "report", "reports", "project", "projects", "problem", "set", "sets",
 }
 
 
@@ -153,6 +155,29 @@ def risk_gate(raw_events: list[dict], text: str) -> tuple[list[dict], list[str]]
             "needs_review": needs_review,
         })
     return dated, undated
+
+
+def suppress_scheduled(undated: list[str], dated_events: list[dict],
+                       weekly_rows: list[dict]) -> list[str]:
+    """무기한 후보가 (i) 날짜 있는 이벤트와 같은 제목이거나 (ii) 주차표 행 안에
+    등장하면 이미 일정이 있는 산출물 — 무기한과제에서 제거하고 중복도 접는다
+    (B4-035/037: 주차표의 case report/problem set가 무기한으로도 중복 방출됐다)."""
+    dated_keys = [_norm_loose(e.get("title")) for e in dated_events if e.get("title")]
+    weekly = [_norm_loose(" ".join(filter(None, [r.get("topic")] + list(r.get("extras") or []))))
+              for r in weekly_rows]
+    out: list[str] = []
+    seen: set[str] = set()
+    for t in undated:
+        k = _norm_loose(t)
+        if not k or k in seen:
+            continue
+        seen.add(k)
+        if any(k in d or d in k for d in dated_keys if d):
+            continue
+        if any(k in w for w in weekly if w):
+            continue
+        out.append(t)
+    return out
 
 
 def merge_events(table_events: list[dict], llm_events: list[dict]) -> list[dict]:

@@ -115,7 +115,36 @@ def extract_subsystem(doc, classifier=None) -> dict:
         status = "not_specified"
 
     # Phase 4: the weekly-plan table — the main home of exams/assignments (v6 §0).
-    from .table_plan import parse_weekly_plan
+    from .table_plan import _EXAM_CUE, parse_weekly_plan
+
+    _EXAM_ONLY_WORDS = {"midterm", "mid", "term", "final", "exam", "exams", "quiz",
+                        "week", "중간", "기말", "시험", "고사", "퀴즈"}
+    # "각 주차에 어떤 챕터를 공부하는지 specify 되어 있으면 그게 가장 중요" (B4-035/037
+    # 메모) — 부속 열에서는 챕터 지정 줄만 주차 내용으로 승격한다. 참조문헌·행정 줄까지
+    # 합치면 사람 gold(요약 전사)와 어긋나고 내용도 잡음이 된다 (배치4 prec 36→9% 실측).
+    _CHAPTER_LINE = re.compile(r"\bch(?:apter)?s?\.?\s*\d|챕터\s*\d|\d+\s*단원|\d+\s*장\b", re.I)
+
+    def _topic_with_extras(r):
+        """주차 내용 = topic + 부속 열의 챕터 지정 줄. 시험 단서 줄은 이벤트로 승격.
+        시험뿐인 행('Midterm week')은 통째로 이벤트 소관 — 내용에서 제외 (B4-029)."""
+        # 셀 내 개행은 대부분 시각적 wrap — 소문자로 시작하는 줄은 앞 줄의 연속
+        # ("CH 1: Consumption" + "theory")
+        lines: list[str] = []
+        for ln in (r.extras or []):
+            if lines and re.match(r"^[a-z0-9(]", ln):
+                lines[-1] += " " + ln
+            else:
+                lines.append(ln)
+        keep = [ln for ln in lines
+                if _CHAPTER_LINE.search(ln) and not _EXAM_CUE.search(ln)]
+        # 셀 내 줄바꿈은 시각적 개행(단어 중간 wrap)이 대부분 — 공백으로 잇는다
+        tail = " ".join(keep)
+        merged = f"{r.topic}, {tail}" if (r.topic and tail) else (r.topic or tail or None)
+        if merged:
+            words = set(re.findall(r"[a-zA-Z가-힣]+", merged.lower()))
+            if words and words <= _EXAM_ONLY_WORDS:
+                return None
+        return merged
 
     plan = parse_weekly_plan(doc)
     seen_keys = {(e.get("type"), e["raw_reference"]) for e in exams} | \
@@ -136,8 +165,9 @@ def extract_subsystem(doc, classifier=None) -> dict:
         "schedule.exams": exams,
         "schedule.assignments": assignments,
         "schedule.weekly_plan": [
-            {"week": r.week, "date_range": r.date_range, "topic": r.topic,
-             "textbook_range": r.textbook_range, "remarks": r.remarks}
+            {"week": r.week, "date_range": r.date_range, "topic": _topic_with_extras(r),
+             "textbook_range": r.textbook_range, "remarks": r.remarks,
+             "extras": r.extras}          # 원문 줄 보존 — 무기한과제 중복 억제의 대조원
             for r in plan.rows
         ],
         "schedule.total_weeks": plan.total_weeks,

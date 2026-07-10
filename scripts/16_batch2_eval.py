@@ -64,7 +64,7 @@ def main() -> int:
     if not args.no_hybrid:
         from syllabus_classifier.common.env import load_env_key
         from syllabus_classifier.extract.event_hybrid import (
-            llm_read_events, merge_events, risk_gate, serialize_events,
+            llm_read_events, merge_events, risk_gate, serialize_events, suppress_scheduled,
         )
         from syllabus_classifier.extract.field_router import extract_subsystem
 
@@ -97,7 +97,9 @@ def main() -> int:
                 sub = extract_subsystem(doc)
                 table_evs = [{**e, "kind": "exam"} for e in sub.get("schedule.exams", [])] + \
                             [{**e, "kind": "assignment"} for e in sub.get("schedule.assignments", [])]
-                preds["ours_hybrid"][(sid, "이벤트")] = serialize_events(merge_events(table_evs, dated))
+                merged = merge_events(table_evs, dated)
+                undated = suppress_scheduled(undated, merged, sub.get("schedule.weekly_plan") or [])
+                preds["ours_hybrid"][(sid, "이벤트")] = serialize_events(merged)
                 preds["ours_hybrid"][(sid, "무기한과제")] = " ; ".join(undated) or None
 
     methods = list(preds)
@@ -117,6 +119,36 @@ def main() -> int:
             cells.append(f"{pct(s['coverage'])}/{pct(s['precision_where_output'])}/{pct(s['fabrication'])} ({s['n_output']:>2})")
         risk = "HIGH" if f in HIGH_RISK_FIELDS else ""
         print(f"{f:10} {risk:4} | " + " | ".join(cells))
+
+    # 주차별내용 week-level (진단): cell 완전일치는 검수자 요약·오타에 지배되므로
+    # (v5 §3-3: 자유서술은 의미 일치), 주 단위 커버리지 + gold 단어 회수율을 따로 본다.
+    import re as _re
+
+    def _weeks(v):
+        out = {}
+        for s in (v or "").split(";"):
+            m = _re.match(r"\s*week\s*0*(\d+)\s*[:.]?\s*(.*)", s.strip(), _re.I)
+            if m:
+                words = [w for w in _re.sub(r"[\W_]+", " ", m.group(2).lower()).split() if w]
+                out[int(m.group(1))] = words
+        return out
+
+    wk_gold = wk_hit = 0
+    recalls = []
+    for c in gold:
+        if c["field"] != "주차별내용" or not c["gold"]:
+            continue
+        g, p = _weeks(c["gold"]), _weeks(preds["ours"].get((c["syllabus_id"], "주차별내용")))
+        for w, gw in g.items():
+            wk_gold += 1
+            if w in p:
+                wk_hit += 1
+                if gw:
+                    ours_set = set(p[w])
+                    recalls.append(sum(1 for x in gw if x in ours_set) / len(gw))
+    if wk_gold:
+        print(f"\n주차별내용 week-level: gold {wk_gold}주 중 주차 커버 {wk_hit} ({wk_hit/wk_gold:.0%})"
+              f" | 커버된 주의 gold 단어 회수율 평균 {sum(recalls)/max(len(recalls),1):.0%}")
 
     ev = event_partial_stats(gold, preds)
     print(f"\n=== 이벤트 event-level (batch-{n} gold) ===")
