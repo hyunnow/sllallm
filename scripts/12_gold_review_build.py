@@ -154,10 +154,20 @@ def main() -> int:
     ap.add_argument("--exclude-drafts", nargs="*", default=[],
                     help="prior drafts jsonl(s); their doc_ids are excluded from sampling")
     ap.add_argument("--blind", type=float, default=0.15)
+    ap.add_argument("--sample-fields", default="",
+                    help="쉼표 구분 필드명: 편집률이 안정된 필드는 비-blind 문서의 표본만 검수 행으로 생성")
+    ap.add_argument("--sample-rate", type=float, default=0.34,
+                    help="표본 검수 필드가 검수 행을 받는 비-blind 문서 비율")
     ap.add_argument("--model", default="gpt-4o-mini")
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
+
+    sample_fields = {f.strip() for f in args.sample_fields.split(",") if f.strip()}
+    unknown = sample_fields - set(FIELDS)
+    if unknown:
+        print(f"ERROR: unknown --sample-fields: {sorted(unknown)} (fields: {FIELDS})")
+        return 1
 
     if not load_env_key():
         print("ERROR: OPENAI_API_KEY not found")
@@ -208,6 +218,18 @@ def main() -> int:
     print(f"{len(rows)} docs in {len(clusters)} clusters ({len(multi)} multi-doc); "
           f"blind subset ({len(blind_ids)}): {sorted(blind_ids)}")
 
+    # 표본 검수 (2026-07-10): 편집률이 안정된 필드는 비-blind 문서의 표본에서만
+    # 검수 행을 만든다 — 부담 축소용 tripwire. blind 문서는 앵커링 게이트의 연료라
+    # 전 필드 유지. 세 필드가 같은 표본 집합을 공유해 검수 동선을 아낀다.
+    # 규칙: 표본 편집률이 직전 전수 편집률의 2배(또는 15%)를 넘으면 다음 배치 전수 복귀.
+    sample_subset: set[str] = set()
+    if sample_fields:
+        non_blind = sorted(r["syllabus_id"] for r in rows if r["syllabus_id"] not in blind_ids)
+        k = max(1, round(len(non_blind) * args.sample_rate))
+        sample_subset = set(random.Random(args.seed + 1).sample(non_blind, k))
+        print(f"표본 검수 {sorted(sample_fields)}: 비-blind {len(non_blind)}docs 중 "
+              f"{k}docs만 검수 행 생성 (+blind {len(blind_ids)}docs는 전 필드)")
+
     out_dir = Path("data/gold")
     out_dir.mkdir(parents=True, exist_ok=True)
     suffix = f"_{args.out_prefix}" if args.out_prefix else ""
@@ -235,6 +257,11 @@ def main() -> int:
         ("", ""),
         ("표기 규칙", NOTATION),
     ]
+    if sample_fields:
+        lines.insert(6, ("표본 검수", f"{', '.join(sorted(sample_fields))}: 편집률이 안정된 필드라 "
+                         f"비-blind 문서 중 표본 {len(sample_subset)}건에만 검수 행이 있습니다"
+                         f" (blind 문서는 전 필드). 표본 편집률이 직전 배치 전수 편집률의 2배를 넘으면"
+                         f" 다음 배치에서 전수 검수로 복귀합니다."))
     for i, (a, b) in enumerate(lines, 1):
         guide.cell(row=i, column=1, value=a).font = Font(bold=bool(a and not b) or a.startswith("Rule"))
         c = guide.cell(row=i, column=2, value=b)
@@ -249,12 +276,16 @@ def main() -> int:
         c.font = Font(bold=True)
         c.fill = PatternFill("solid", start_color="E8EAF0")
     blind_fill = PatternFill("solid", start_color="FFF3CD")
+    n_rows = 0
     for r in rows:
         sid = r["syllabus_id"]
         is_blind = sid in blind_ids
         for f in FIELDS:
+            if f in sample_fields and not is_blind and sid not in sample_subset:
+                continue                   # 표본 검수: 표본 밖 문서는 이 필드 행 없음
             draft = None if is_blind else (drafts.get(sid, {}) or {}).get(f)
             ws.append([sid, f, "[BLIND]" if is_blind else (draft or ""), "", "", ""])
+            n_rows += 1
             for cell in ws[ws.max_row]:
                 cell.number_format = "@"   # text — stop Excel coercing dates/times
                 if is_blind:
@@ -275,7 +306,10 @@ def main() -> int:
 
     path = out_dir / f"gold_review{suffix}.xlsx"
     wb.save(path)
-    print(f"wrote {path}  (검수 {len(rows)*len(FIELDS)} rows; 원문 {len(rows)}; drafts hidden for blind docs)")
+    saved = len(rows) * len(FIELDS) - n_rows
+    print(f"wrote {path}  (검수 {n_rows} rows"
+          + (f", 표본 검수로 {saved} rows 절감" if saved else "")
+          + f"; 원문 {len(rows)}; drafts hidden for blind docs)")
     return 0
 
 

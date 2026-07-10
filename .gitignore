@@ -56,5 +56,7 @@ data/gold/
 # batch-2 source files for review (real syllabi) — local only
 b-2/
 
-# batch-3 source files (real syllabi) — local only
+# batch-N source files for review (real syllabi) — local only
 b-3/
+b-4/
+b-[0-9]*/
