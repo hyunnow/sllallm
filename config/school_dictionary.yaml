@@ -9,78 +9,115 @@ schools:
     canonical: "연세대학교"
     aliases: ["연세대", "Yonsei University", "Yonsei", "YISS"]
     campuses: ["신촌", "국제", "원주"]     # 원주 has different period times (§3-3)
+    domains: ['yonsei.ac.kr']
   korea:
     canonical: "고려대학교"
     aliases: ["고려대", "Korea University", "KU"]
     campuses: ["안암", "세종"]
+    domains: ['korea.ac.kr']
   kaist:
     canonical: "KAIST"
     aliases: ["카이스트", "한국과학기술원", "Korea Advanced Institute"]
     campuses: []
+    domains: ['kaist.ac.kr', 'kaist.edu']
   unist:
     canonical: "UNIST"
     aliases: ["울산과학기술원", "Ulsan National Institute"]
     campuses: []
+    domains: ['unist.ac.kr']
   hanyang:
     canonical: "한양대학교"
-    aliases: ["한양대", "Hanyang University", "ERICA"]
+    # bare "Hanyang": B3-016 — 문서의 유일한 증거가 "C-Hanyang Core Competencies"
+    aliases: ["한양대", "Hanyang University", "Hanyang", "ERICA"]
     campuses: ["서울", "ERICA"]
+    domains: ['hanyang.ac.kr']
   gachon:
     canonical: "가천대학교"
     aliases: ["가천대", "Gachon University"]
     campuses: []
+    domains: ['gachon.ac.kr']
   dankook:
     canonical: "단국대학교"
     aliases: ["단국대", "Dankook University"]
     campuses: ["죽전", "천안"]
+    domains: ['dankook.ac.kr']
   hongik:
     canonical: "홍익대학교"
     aliases: ["홍익대", "Hongik University"]
     campuses: ["서울", "세종"]
+    domains: ['hongik.ac.kr']
   nyu:
     canonical: "New York University"
-    aliases: ["NYU", "NYU Stern", "Stern School of Business"]
+    aliases: ["NYU", "NYU Stern", "Stern School of Business", "NYU Stern School of Business",
+              "New York University Stern School of Business"]
     campuses: []
+    domains: ['nyu.edu']
   pusan:
     canonical: "부산대학교"
     aliases: ["부산대", "Pusan National University"]
     campuses: []
+    domains: ['pusan.ac.kr']
   sejong:
     canonical: "세종대학교"
     aliases: ["세종대", "Sejong University"]
     campuses: []
+    domains: ['sejong.ac.kr']
   ewha:
     canonical: "이화여자대학교"
     aliases: ["이화여대", "Ewha Womans University", "Ewha"]
     campuses: []
+    domains: ['ewha.ac.kr']
   konkuk:
     canonical: "건국대학교"
     aliases: ["건국대", "Konkuk University"]
     campuses: ["서울", "글로컬"]
+    domains: ['konkuk.ac.kr']
   dongguk:
     canonical: "동국대학교"
     aliases: ["동국대", "Dongguk University"]
     campuses: ["서울", "WISE"]
+    domains: ['dongguk.edu', 'dongguk.ac.kr']
   soongsil:
     canonical: "숭실대학교"
     aliases: ["숭실대", "Soongsil University"]
     campuses: []
+    domains: ['ssu.ac.kr']
   kyunghee:
     canonical: "경희대학교"
     aliases: ["경희대", "Kyung Hee University"]   # 경희사이버대와 혼동 금지 (v7 주의)
     campuses: ["서울", "국제"]
+    domains: ['khu.ac.kr']
   snu:
     canonical: "서울대학교"
     aliases: ["서울대", "Seoul National University", "SNU"]
     campuses: []
+    domains: ['snu.ac.kr']
   skku:
     canonical: "성균관대학교"
     aliases: ["성균관대", "Sungkyunkwan University", "SKKU"]
     campuses: ["인문사회", "자연과학"]
+    domains: ['skku.edu']
   sogang:
     canonical: "서강대학교"
     aliases: ["서강대", "Sogang University"]
     campuses: []
+    domains: ['sogang.ac.kr']
+  # 배치3에서 새로 등장한 학교들
+  kookmin:
+    canonical: "국민대학교"
+    aliases: ["국민대", "Kookmin University"]
+    campuses: []
+    domains: ['kookmin.ac.kr']
+  chungang:
+    canonical: "중앙대학교"
+    aliases: ["중앙대", "Chung-Ang University", "CAU"]
+    campuses: ["서울", "다빈치"]
+    domains: ['cau.ac.kr']
+  kyungpook:
+    canonical: "경북대학교"
+    aliases: ["경북대", "Kyungpook National University", "KNU"]
+    campuses: ["대구", "상주"]
+    domains: ['knu.ac.kr']
 
 # Generic patterns that mark a token as a school (not a department):
 school_patterns: ["대학교$", "University"]

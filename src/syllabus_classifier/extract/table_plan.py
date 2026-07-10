@@ -132,6 +132,11 @@ def _check_alignment(rows: list[PlanRow]) -> list[str]:
                                                  or _FILENAMEY.search(r.topic)))
     if shifty >= 2:
         issues.append("column_shift")
+    # every week carrying the IDENTICAL topic is a stray neighboring cell sucked
+    # into all rows, not a plan (B3-004: 15 weeks of "선택") — zero information
+    topics = {(r.topic or "").strip() for r in rows if (r.topic or "").strip()}
+    if len(weeks) >= 5 and len(topics) == 1:
+        issues.append("uniform_topic")
     return issues
 
 
@@ -194,7 +199,13 @@ def _rows_from_table(table) -> list[PlanRow]:
 def _plan_from_rows(rows: list[PlanRow]) -> WeeklyPlan:
     issues = _check_alignment(rows)
     plan = WeeklyPlan(rows=rows, issues=issues)
-    if issues:
+    if issues == ["uniform_topic"]:
+        # topics are a stray repeated cell (B3-004) but the week NUMBERING is
+        # intact — abstain on contents only, keep the week count
+        plan.needs_review = True
+        plan.rows = []
+        plan.total_weeks = max(r.week for r in rows if r.week is not None)
+    elif issues:
         # abstain-on-uncertain: corrupted alignment must not emit values
         plan.needs_review = True
         plan.rows = []

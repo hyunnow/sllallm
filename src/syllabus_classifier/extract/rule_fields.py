@@ -14,6 +14,7 @@ form layouts are covered by extending config, not code.
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Optional
 
 from ..common.config import load_config
@@ -143,7 +144,11 @@ _YEAR_TERM = re.compile(r"(\d{4})\s*년?[\s\-./]*([12])\s*학기")
 # bare year (§3-1). "Spring 2026" / "2026 SUMMER (SCHOOL/SESSION/…)" both ways.
 _EN_TERM_YEAR = re.compile(r"\b(spring|summer|fall|autumn|winter)\s*[,\s]\s*(20\d{2})\b", re.I)
 _EN_YEAR_TERM = re.compile(r"\b(20\d{2})\b[^\n]{0,40}?\b(spring|summer|fall|autumn|winter)\b", re.I)
-_TERM_ONLY = re.compile(r"([12])\s*학기|여름\s*(?:계절)?학기|겨울\s*(?:계절)?학기|summer|winter|spring|fall", re.IGNORECASE)
+_TERM_ONLY = re.compile(
+    r"([12])\s*학기"
+    r"|(봄|여름|가을|겨울)\s*(?:계절)?학기"
+    r"|\b(spring|summer|fall|autumn|winter)\b",   # word-bounded: waterfall ≠ fall
+    re.IGNORECASE)
 _FULL_DATE = re.compile(r"\d{4}\s*[.\-/]\s*\d{1,2}\s*[.\-/]\s*\d{1,2}")
 
 
@@ -172,52 +177,82 @@ def extract_academic_year(doc) -> Optional[int]:
     return None
 
 
+# 학기 canonical = 계절 (B3-007/B3-039 reviewer policy: 숫자가 아닌 계절로 표기).
+# 한국어 N학기만 결정론 변환(1학기=봄, 2학기=가을 — 국내 학사 구조상 고정);
+# 영어 "Semester N"류 숫자는 나라마다 계절이 반대일 수 있어 변환하지 않는다.
+_SEASON = {"1": "봄", "2": "가을", "봄": "봄", "여름": "여름", "가을": "가을", "겨울": "겨울",
+           "spring": "봄", "summer": "여름", "fall": "가을", "autumn": "가을", "winter": "겨울"}
+
+
 def extract_term(doc) -> Optional[str]:
     text = doc.full_text
     m = _YEAR_TERM.search(text)
     if m:
-        return m.group(2)
+        return _SEASON[m.group(2)]
     m = _TERM_ONLY.search(text)
     if m:
-        s = m.group(0).lower()
-        if "여름" in s or "summer" in s:
-            return "summer"
-        if "겨울" in s or "winter" in s:
-            return "winter"
-        if "spring" in s:
-            return "1"
-        if "fall" in s:
-            return "2"
-        return m.group(1)
+        key = (m.group(1) or m.group(2) or m.group(3) or "").lower()
+        return _SEASON.get(key)
     return None
 
 
 # --- §3-2 school / campus / department -----------------------------------------
 
 
-def extract_school_campus(doc) -> tuple[Optional[str], Optional[str]]:
-    """School only from the dictionary; ties broken by hit count then position."""
-    cfg = load_config("school_dictionary.yaml")
-    text = doc.full_text
+def _dict_school_hits(text: str, cfg) -> tuple[Optional[dict], int, int]:
+    """Best dictionary entry for a text surface; (entry, hits, first_pos)."""
+    # macOS filenames carry NFD-decomposed hangul — NFC first or "국민대" never hits
+    text = unicodedata.normalize("NFC", text or "")
     best, best_hits, best_pos = None, 0, 10 ** 9
-    best_campuses: list[str] = []
     for entry in cfg["schools"].values():
         names = [entry["canonical"]] + entry.get("aliases", [])
         hits, first = 0, 10 ** 9
         for n in names:
-            for m in re.finditer(re.escape(n), text, re.IGNORECASE):
+            # short acronyms (KU/KNU/CAU/SNU…) only count as exact-case whole
+            # words — IGNORECASE substrings hit inside "because"/"kudos"
+            if re.fullmatch(r"[A-Z]{2,5}", n):
+                pat = re.compile(rf"(?<![A-Za-z]){n}(?![A-Za-z])")
+            else:
+                pat = re.compile(re.escape(n), re.IGNORECASE)
+            for m in pat.finditer(text):
                 hits += 1
                 first = min(first, m.start())
         if hits and (hits > best_hits or (hits == best_hits and first < best_pos)):
-            best, best_hits, best_pos = entry["canonical"], hits, first
-            best_campuses = entry.get("campuses", [])
+            best, best_hits, best_pos = entry, hits, first
+    return best, best_hits, best_pos
+
+
+def _school_from_email_domain(text: str, cfg) -> Optional[dict]:
+    """B3-005/014/017: an institutional email domain is deterministic school
+    evidence (@unist.ac.kr 도메인 → UNIST). gmail류 공용 도메인은 사전에 없어
+    자연 배제; 서로 다른 학교 도메인이 섞이면 abstain."""
+    doc_domains = {m.group(0).rsplit("@", 1)[1].lower() for m in _EMAIL.finditer(text)}
+    matched = {}
+    for entry in cfg["schools"].values():
+        for d in entry.get("domains", []):
+            if any(dom == d or dom.endswith("." + d) for dom in doc_domains):
+                matched[entry["canonical"]] = entry
+    return next(iter(matched.values())) if len(matched) == 1 else None
+
+
+def extract_school_campus(doc) -> tuple[Optional[str], Optional[str]]:
+    """School only from the dictionary. Evidence priority: body text > email
+    domain > source filename (kocw류 export는 본문에 학교명이 없다)."""
+    cfg = load_config("school_dictionary.yaml")
+    text = doc.full_text
+    entry, _, _ = _dict_school_hits(text, cfg)
+    if entry is None:
+        entry = _school_from_email_domain(text, cfg)
+    if entry is None:
+        entry, _, _ = _dict_school_hits(getattr(doc, "doc_id", "") or "", cfg)
+    if entry is None:
+        return None, None
     campus = None
-    if best:
-        for c in best_campuses:
-            if re.search(rf"{re.escape(c)}\s*캠퍼스|캠퍼스\s*[:：]?\s*{re.escape(c)}|\b{re.escape(c)}\b", text):
-                campus = c
-                break
-    return best, campus
+    for c in entry.get("campuses", []):
+        if re.search(rf"{re.escape(c)}\s*캠퍼스|캠퍼스\s*[:：]?\s*{re.escape(c)}|\b{re.escape(c)}\b", text):
+            campus = c
+            break
+    return entry["canonical"], campus
 
 
 def extract_department(doc) -> Optional[str]:
@@ -236,6 +271,10 @@ _CODE_SHAPES = [
 ]
 # uppercase+digit tokens that are never course codes
 _CODE_BLOCKLIST = re.compile(r"^(?:COVID|SARS|H\d|ISBN|ISSN|MP\d|A\d|B\d|PC\d|IP\d)", re.I)
+# a code-shaped token right after a room label is a CLASSROOM, not a course code
+# (B3-033: "Classroom: EDU 306" must not become 학수번호)
+_ROOM_CONTEXT = re.compile(
+    r"(?:classroom|lecture\s*room|\broom|강의실|강의동|호실|장소)\s*[:：]?\s*$", re.I)
 
 
 def find_course_code(text: str) -> Optional[str]:
@@ -243,8 +282,11 @@ def find_course_code(text: str) -> Optional[str]:
     for pat in _CODE_SHAPES:
         for m in pat.finditer(text or ""):
             tok = m.group(0)
-            if not _CODE_BLOCKLIST.match(tok.replace(" ", "")):
-                return tok.replace(" ", "")
+            if _CODE_BLOCKLIST.match(tok.replace(" ", "")):
+                continue
+            if _ROOM_CONTEXT.search((text or "")[max(0, m.start() - 30):m.start()]):
+                continue
+            return tok.replace(" ", "")
     return None
 
 
@@ -312,6 +354,12 @@ def extract_phones(doc) -> list[str]:
 # --- assembled rule pass --------------------------------------------------------
 
 
+# a labeled class-time value must carry day/time/period evidence; a bare digit
+# string from a mangled table (B3-038: "678") is never a class time (§3 abstain)
+_TIME_EVIDENCE = re.compile(
+    r"[월화수목금토일]|(?:mon|tue|wed|thu|fri|sat|sun)|\d{1,2}\s*[:시]\s*\d{0,2}|교시|am|pm", re.I)
+
+
 def extract_rule_fields(doc) -> dict:
     """One pass over a NormalizedDoc -> flat {field_path: value} for the rule method."""
     school, campus = extract_school_campus(doc)
@@ -340,6 +388,10 @@ def extract_rule_fields(doc) -> dict:
     emails = extract_emails(doc)
     phones = extract_phones(doc)
 
+    raw_time = labeled_value(doc, "class_time", cut=False)
+    if raw_time and not _TIME_EVIDENCE.search(raw_time):
+        raw_time = None
+
     return {
         "meta.school": school,
         "meta.campus": campus,
@@ -357,6 +409,6 @@ def extract_rule_fields(doc) -> dict:
         "instructors.phone": phones[0] if phones else None,
         "instructors.office": labeled_value(doc, "office"),
         "meeting.location": labeled_value(doc, "location"),
-        "meeting.raw_time": labeled_value(doc, "class_time", cut=False),
+        "meeting.raw_time": raw_time,
         "admin.attendance_policy": labeled_value(doc, "attendance_policy"),
     }

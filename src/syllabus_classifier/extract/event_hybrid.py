@@ -20,8 +20,8 @@ from .candidate_extractor import classify_date_kind
 from ..normalize import normalize_date
 
 _SYSTEM = (
-    "You list the exam/assignment events written in a university syllabus "
-    "(Korean or English). Return JSON {\"events\": [...]}, each event:\n"
+    "You list the exam/assignment/presentation events written in a university "
+    "syllabus (Korean or English). Return JSON {\"events\": [...]}, each event:\n"
     '  {"title": <name as written in the document>,\n'
     '   "type": "exam" | "assignment" | "other",\n'
     '   "date_raw": <the date REFERENCE exactly as the document states it — '
@@ -29,8 +29,10 @@ _SYSTEM = (
     "if the document gives no date>}\n"
     "STRICT RULES: copy references as written; NEVER convert a week number to a "
     "real date; NEVER infer or invent a date that is not in the text; include "
-    "undated assignments with date_raw null. Do not include regular class "
-    "meetings or office hours."
+    "undated assignments with date_raw null. Presentations (발표), quizzes and "
+    'other scheduled deliverables count as events (type "other" unless they are '
+    "an exam or an assignment). Do not include regular class meetings or office "
+    "hours."
 )
 
 

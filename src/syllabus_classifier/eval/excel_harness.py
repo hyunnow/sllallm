@@ -135,8 +135,6 @@ def ours_fields_from_doc(doc) -> dict[str, object]:
         return " ; ".join(parts) or None
 
     contact = " ; ".join(v for v in (rule.get("instructors.email"), rule.get("instructors.phone")) if v) or None
-    # our internal term values -> the Excel notation {1, 2, 여름, 겨울}
-    term = {"summer": "여름", "winter": "겨울"}.get(rule.get("meta.term"), rule.get("meta.term"))
     return {
         "과목명": rule.get("course.title_ko") or rule.get("course.title_en"),
         "학수번호": rule.get("meta.course_code"),
@@ -151,7 +149,8 @@ def ours_fields_from_doc(doc) -> dict[str, object]:
         "주차별내용": weekly_plan_serialized(),
         "대학": rule.get("meta.school"),
         "학년도": rule.get("meta.academic_year"),
-        "학기": term,
+        # extract_term already emits the season canonical (봄/여름/가을/겨울, B3-039)
+        "학기": rule.get("meta.term"),
     }
 
 

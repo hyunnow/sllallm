@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Batch-2 evaluation — OUR extractor (+event hybrid) against batch-2 gold on
-the REAL normalized corpus docs (tables intact — the fair setting for
+"""Corpus-batch evaluation — OUR extractor (+event hybrid) against a batch's
+gold on the REAL normalized corpus docs (tables intact — the fair setting for
 총주차/주차별내용/이벤트 that flattened batch-1 text under-measured).
 
 Old methods (룰/LLM/하이브리드) have no outputs for corpus docs, so this scores
-ours only. Numbers stay PROVISIONAL: n=36 docs and the batch-2 trust gate
-carries an anchoring caution (+16.7pp after notation-fair comparison).
+ours only. Numbers stay PROVISIONAL until enough batches pass their trust gate
+(batch-2: anchoring caution +16.7pp; batch-3: +11.3pp — v5 §4-3 no-winner rule).
 
-Usage:  python scripts/16_batch2_eval.py [--no-hybrid]
+Usage:  python scripts/16_batch2_eval.py [--batch 2|3] [--no-hybrid]
 """
 from __future__ import annotations
 
@@ -27,10 +27,10 @@ from syllabus_classifier.eval.method_compare import (
 from syllabus_classifier.extract.normalize_doc import NormalizedDoc
 
 
-def load_docs() -> dict[str, NormalizedDoc]:
+def load_docs(drafts_path: Path) -> dict[str, NormalizedDoc]:
     """syllabus_id -> real NormalizedDoc via the drafts mapping."""
     out = {}
-    for line in Path("data/gold/drafts_batch2.jsonl").read_text(encoding="utf-8").splitlines():
+    for line in drafts_path.read_text(encoding="utf-8").splitlines():
         d = json.loads(line)
         fp = Path("data/normalized") / f"{d['doc_id']}.json"
         if fp.exists():
@@ -40,12 +40,19 @@ def load_docs() -> dict[str, NormalizedDoc]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--batch", type=int, default=2, choices=(2, 3))
     ap.add_argument("--no-hybrid", action="store_true")
     args = ap.parse_args()
 
-    gold = [json.loads(l) for l in Path("data/gold/gold_batch2.jsonl").read_text(encoding="utf-8").splitlines()]
-    docs = load_docs()
-    print(f"batch-2: {len(docs)} docs, {len(gold)} confirmed gold cells")
+    n = args.batch
+    gold_path = Path(f"data/gold/gold_batch{n}.jsonl")
+    drafts_path = Path(f"data/gold/drafts_batch{n}.jsonl")
+    cache_path = Path(f"data/gold/llm_events_cache_b{n}.jsonl")
+    report_path = Path(f"data/gold/batch{n}_report.json")
+
+    gold = [json.loads(l) for l in gold_path.read_text(encoding="utf-8").splitlines()]
+    docs = load_docs(drafts_path)
+    print(f"batch-{n}: {len(docs)} docs, {len(gold)} confirmed gold cells")
 
     preds: dict[str, dict] = {"ours": {}}
     for sid, doc in docs.items():
@@ -61,7 +68,6 @@ def main() -> int:
         )
         from syllabus_classifier.extract.field_router import extract_subsystem
 
-        cache_path = Path("data/gold/llm_events_cache_b2.jsonl")
         cache = {}
         if cache_path.exists():
             for line in cache_path.read_text(encoding="utf-8").splitlines():
@@ -113,16 +119,16 @@ def main() -> int:
         print(f"{f:10} {risk:4} | " + " | ".join(cells))
 
     ev = event_partial_stats(gold, preds)
-    print(f"\n=== 이벤트 event-level (batch-2 gold) ===")
+    print(f"\n=== 이벤트 event-level (batch-{n} gold) ===")
     print(f"{'method':12} {'gold':>5} {'pred':>5} {'exact':>6} | {'title':>5} {'type':>5} {'date':>5} {'kind':>5}")
     for x in methods:
         s = ev[x]
         print(f"{x:12} {s['gold_events']:>5} {s['pred_events']:>5} {s['exact']:>6} | "
               f"{s['title']:>5} {s['type']:>5} {s['date']:>5} {s['date_kind']:>5}")
 
-    Path("data/gold/batch2_report.json").write_text(
+    report_path.write_text(
         json.dumps({"metrics": m, "event_partial": ev}, ensure_ascii=False, indent=2), encoding="utf-8")
-    print("\nreport -> data/gold/batch2_report.json  (PROVISIONAL: n=36, gate caution +16.7pp)")
+    print(f"\nreport -> {report_path}  (PROVISIONAL: {len(docs)} docs — v5 §4-3 no-winner rule)")
     return 0
 
 

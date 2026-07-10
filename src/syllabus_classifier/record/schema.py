@@ -20,7 +20,7 @@ _EMPTY: dict[str, Any] = {
         "campus": None,            # period timetables differ per campus (§3-3)
         "department": None,
         "academic_year": None,     # 학년도 — never the print/export date (§3-1)
-        "term": None,              # 1 | 2 | summer | winter
+        "term": None,              # 봄 | 여름 | 가을 | 겨울 (계절 canonical, B3-039)
         "course_code": None,
     },
     "course": {

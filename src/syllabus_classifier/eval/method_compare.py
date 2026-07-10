@@ -39,10 +39,32 @@ _TERM_CANON = {
 }
 
 
+# 대학 표기는 학교 사전(canonical+aliases) 기준으로 동치 — 검수자는 문서 표기
+# ("Hanyang", "KOREA UNIVERSITY")를, 우리는 canonical("한양대학교")을 쓰므로
+# 같은 학교의 다른 표기가 오답으로 채점되지 않게 한다 (배치3 메모 B3-005/016류).
+def _school_canon() -> dict:
+    global _SCHOOL_CANON_CACHE
+    try:
+        return _SCHOOL_CANON_CACHE
+    except NameError:
+        pass
+    from ..common.config import load_config
+    table = {}
+    for e in load_config("school_dictionary.yaml")["schools"].values():
+        for name in [e["canonical"]] + list(e.get("aliases", [])):
+            table[_norm(name)] = e["canonical"]
+    _SCHOOL_CANON_CACHE = table
+    return table
+
+
 def values_match(field: str, pred, gold) -> bool:
     if field == "학기":
         p, g = _norm(pred), _norm(gold)
         return _TERM_CANON.get(p, p) == _TERM_CANON.get(g, g)
+    if field == "대학":
+        p, g = _norm(pred), _norm(gold)
+        c = _school_canon()
+        return c.get(p, p) == c.get(g, g)
     if field in MULTI_SEGMENT_FIELDS:
         p = {s.strip() for s in _norm(pred).split(";") if s.strip()}
         g = {s.strip() for s in _norm(gold).split(";") if s.strip()}
