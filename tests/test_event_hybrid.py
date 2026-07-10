@@ -51,12 +51,14 @@ def test_undated_assignment_goes_to_undated_list():
 
 
 def test_generic_rubric_titles_are_not_undated_assignments():
+    # 2026-07-10 통일 규칙: 평가표 안 과제류(Assignments/과제)는 무기한과제에 포함.
+    # 비산출물 rubric 헤더(출석·발표·참여)만 계속 차단.
     doc = "성적: 과제 20% Assignments Attendance, Presentation, and Class Participation IC-PBL Term Project"
     raw = [{"title": t, "type": "assignment", "date_raw": None} for t in
            ["Assignments", "과제", "Attendance, Presentation, and Class Participation",
             "IC-PBL Term Project"]]
     _, undated = risk_gate(raw, doc)
-    assert undated == ["IC-PBL Term Project"]     # only the specific title survives
+    assert undated == ["Assignments", "과제", "IC-PBL Term Project"]
 
 
 def test_uncertain_reference_kind():

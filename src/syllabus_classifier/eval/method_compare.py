@@ -18,6 +18,7 @@ so ordering differences don't count as errors.
 from __future__ import annotations
 
 import random
+import re
 from collections import defaultdict
 from typing import Optional
 
@@ -57,6 +58,29 @@ def _school_canon() -> dict:
     return table
 
 
+# 수업시간 세그먼트 동치: "MON WED 10:30-11:45"(요일 묶음, 문서 표기)와
+# "Mon 10:30-11:45 ; Wed 10:30-11:45"(요일별 분해, 우리 표기)는 같은 사실 —
+# 요일 나열+단일 시간범위 형태만 결정론 전개한다 (B3-028 정정에서 확립).
+_CT_DAY = r"(?:mon|tue|wed|thu|fri|sat|sun|월|화|수|목|금|토|일)"
+_CT_RANGE = r"\d{1,2}:\d{2}\s*[-~–]\s*\d{1,2}:\d{2}"
+_CT_MULTI_DAY = re.compile(rf"^({_CT_DAY}(?:[\s/,·]+{_CT_DAY})+)[\s:]*({_CT_RANGE})$", re.IGNORECASE)
+
+
+def _class_time_segments(value) -> set:
+    segs = set()
+    for s in _norm(value).split(";"):
+        s = s.strip()
+        if not s:
+            continue
+        m = _CT_MULTI_DAY.match(s)
+        if m:
+            days = re.findall(_CT_DAY, m.group(1), re.IGNORECASE)
+            segs.update(f"{d} {m.group(2)}" for d in days)
+        else:
+            segs.add(s)
+    return segs
+
+
 def values_match(field: str, pred, gold) -> bool:
     if field == "학기":
         p, g = _norm(pred), _norm(gold)
@@ -65,6 +89,8 @@ def values_match(field: str, pred, gold) -> bool:
         p, g = _norm(pred), _norm(gold)
         c = _school_canon()
         return c.get(p, p) == c.get(g, g)
+    if field == "수업시간":
+        return _class_time_segments(pred) == _class_time_segments(gold)
     if field in MULTI_SEGMENT_FIELDS:
         p = {s.strip() for s in _norm(pred).split(";") if s.strip()}
         g = {s.strip() for s in _norm(gold).split(";") if s.strip()}

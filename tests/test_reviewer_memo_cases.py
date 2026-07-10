@@ -160,3 +160,23 @@ def test_b3_010_school_from_nfd_filename():
     d = NormalizedDoc(doc_id=nfd_id, pages=[Page(page_no=1, text="주차별 강의계획", tables=[])])
     school, _ = extract_school_campus(d)
     assert school == "국민대학교"
+
+
+# --- 2026-07-10 사용자 결정: 무기한 항목 통일 + 수업시간 요일묶음 동치 ---------------
+
+def test_undated_exam_becomes_null_uncertain_event():
+    from syllabus_classifier.extract.event_hybrid import risk_gate
+    raw = [{"title": "Midterm Exam", "type": "exam", "date_raw": None},
+           {"title": "Homework", "type": "assignment", "date_raw": None}]
+    dated, undated = risk_gate(raw, "Midterm Exam ... Homework ...")
+    # 무기한 시험 → 이벤트(null|uncertain), 무기한 과제 → 무기한과제만
+    assert [(e["title"], e["kind"], e["raw_reference"], e["date_kind"]) for e in dated] == \
+        [("Midterm Exam", "exam", "null", "uncertain")]
+    assert undated == ["Homework"]
+
+
+def test_b3_028_class_time_day_group_equivalence():
+    # 문서 표기 "MON WED 10:30-11:45" == 요일별 분해 표기 (같은 사실)
+    assert values_match("수업시간", "Mon 10:30-11:45 ; Wed 10:30-11:45", "MON WED 10:30-11:45")
+    assert values_match("수업시간", "월 15:00-16:15 ; 수 15:00-16:15", "월 수 15:00-16:15")
+    assert not values_match("수업시간", "Mon 10:30-11:45", "MON WED 10:30-11:45")

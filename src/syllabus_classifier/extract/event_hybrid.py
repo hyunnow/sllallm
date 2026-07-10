@@ -82,15 +82,14 @@ def _evidenced(iso: str, doc_dates: set[str]) -> bool:
     return len(iso) == 10 and iso[5:] in doc_dates      # "2026-08-06" vs "8/6" in text
 
 
-# Generic grading-section words are NOT undated-assignment titles ("Assignments",
-# "과제", "Attendance, Presentation, and Class Participation"). A title that is
-# nothing but these words is a rubric header the LLM over-promoted — measured
-# fabrication source on gold-absent cells (batch-2 fab 83%).
+# NON-DELIVERABLE rubric words are not undated-assignment titles ("Attendance,
+# Presentation, and Class Participation" is a rubric header, not a deliverable).
+# 2026-07-10 통일 규칙: 평가표 안 과제류 산출물(homework/과제 등)은 무기한과제에
+# 포함한다 — deliverable 단어들은 이 드롭셋에서 제외 (gold: "Homework", "SQL 과제").
 _GENERIC_ASSIGN_WORDS = {
-    "과제", "과제물", "숙제", "출석", "발표", "참여", "토론", "퀴즈",
-    "assignment", "assignments", "homework", "hw", "attendance", "presentation",
-    "presentations", "participation", "quiz", "quizzes", "class", "regular",
-    "optional", "and", "or", "etc",
+    "출석", "발표", "참여", "토론", "퀴즈",
+    "attendance", "presentation", "presentations", "participation",
+    "quiz", "quizzes", "class", "regular", "optional", "and", "or", "etc",
 }
 
 
@@ -121,8 +120,18 @@ def risk_gate(raw_events: list[dict], text: str) -> tuple[list[dict], list[str]]
             continue
 
         if not date_raw:
+            # 통일 규칙 (2026-07-10 사용자 결정): 무기한 과제류 → 무기한과제 필드만,
+            # 무기한 시험 → 이벤트에 null|uncertain (시험은 본질적으로 일정 이벤트),
+            # 둘 다 두 곳에 중복 기재 금지.
             if etype == "assignment" and title and not _is_generic_assignment_title(title):
                 undated.append(title)
+            elif etype == "exam" and title:
+                dated.append({
+                    "title": title, "kind": "exam",
+                    "raw_reference": "null", "date_kind": "uncertain",
+                    "resolved_date": None, "resolved_by": None,
+                    "needs_review": True,
+                })
             continue
 
         kind = classify_date_kind(date_raw)
