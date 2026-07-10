@@ -40,7 +40,7 @@ def load_docs(drafts_path: Path) -> dict[str, NormalizedDoc]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--batch", type=int, default=2, choices=(2, 3, 4))
+    ap.add_argument("--batch", type=int, default=2, choices=(2, 3, 4, 5))
     ap.add_argument("--no-hybrid", action="store_true")
     args = ap.parse_args()
 
