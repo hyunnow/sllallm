@@ -255,14 +255,17 @@ def _school_from_email_domain(text: str, cfg) -> Optional[dict]:
 
 
 def extract_school_campus(doc) -> tuple[Optional[str], Optional[str]]:
-    """School only from the dictionary. Evidence = 문서 내용만: body text > email
-    domain. 수집 파일명(doc_id)은 증거가 아니다 — 2026-07-12 사용자 판정 (B5-005
-    kocw·B5-024 폴더명 사례 gold=null; 배치3 시절의 파일명 폴백을 철회)."""
+    """School only from the dictionary. 증거 우선순위: 본문 > 이메일 도메인 >
+    수집 파일명(doc_id). 파일명 폴백은 kocw류 아카이브(파일명에 학교가 박힌 명명
+    규칙, 본문엔 학교명 없음) 때문에 존재 — 2026-07-12 사용자 최종 판정으로 유지
+    (한 차례 철회했다가 파일명 출처 확인 후 복원)."""
     cfg = load_config("school_dictionary.yaml")
     text = doc.full_text
     entry, _, _ = _dict_school_hits(text, cfg)
     if entry is None:
         entry = _school_from_email_domain(text, cfg)
+    if entry is None:
+        entry, _, _ = _dict_school_hits(getattr(doc, "doc_id", "") or "", cfg)
     if entry is None:
         return None, None
     campus = None
