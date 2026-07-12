@@ -157,6 +157,28 @@ def risk_gate(raw_events: list[dict], text: str) -> tuple[list[dict], list[str]]
     return dated, undated
 
 
+_NO_SESSION_MARK = re.compile(r"no\s*(?:lab|class)|수업\s*없음|실험\s*없음|휴강", re.I)
+
+
+def suppress_no_session_exams(events: list[dict], weekly_rows: list[dict]) -> list[dict]:
+    """무기한(null) 시험 이벤트인데 주차표에 같은 시험이 'no lab/no class' 표시와 함께
+    있으면 — 시험이 아니라 '그 주간엔 수업 없음' 기간 표시다 (B4-008, B5-013: 실험
+    과목의 Mid-Term(no lab)). 날짜 있는 이벤트는 건드리지 않는다."""
+    blobs = [_norm_loose(" ".join(filter(None, [r.get("topic")] + list(r.get("extras") or []))))
+             for r in weekly_rows
+             if _NO_SESSION_MARK.search(" ".join(filter(None, [r.get("topic")] + list(r.get("extras") or []))))]
+    if not blobs:
+        return events
+    out = []
+    for e in events:
+        if e.get("kind") == "exam" and e.get("raw_reference") in (None, "null"):
+            k = _norm_loose(e.get("title"))
+            if k and any(k in b for b in blobs):
+                continue
+        out.append(e)
+    return out
+
+
 def suppress_scheduled(undated: list[str], dated_events: list[dict],
                        weekly_rows: list[dict]) -> list[str]:
     """무기한 후보가 (i) 날짜 있는 이벤트와 같은 제목이거나 (ii) 주차표 행 안에

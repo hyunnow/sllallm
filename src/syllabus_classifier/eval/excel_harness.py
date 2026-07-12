@@ -109,7 +109,8 @@ def ours_fields_from_doc(doc) -> dict[str, object]:
         # 4-part contract per the 읽어보기 notation:
         #   제목 | 타입(exam/assignment/other) | 날짜(raw) | 날짜종류
         parts = []
-        for kind, key in (("exam", "schedule.exams"), ("assignment", "schedule.assignments")):
+        for kind, key in (("exam", "schedule.exams"), ("assignment", "schedule.assignments"),
+                          ("other", "schedule.others")):
             for e in sub.get(key) or []:
                 title = e.get("title") or "?"
                 parts.append(f"{title} | {kind} | {e['raw_reference']} | {e['date_kind']}")

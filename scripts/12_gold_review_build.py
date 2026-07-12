@@ -58,10 +58,35 @@ _SYSTEM = (
     "from the raw syllabus text EXACTLY as evidenced — no invention. If a field "
     "is not in the text, return null. Dates stay RAW (YYYY-MM-DD or 'Week N' or "
     "'Week N Thu' or 'start~end') with 날짜종류 in {absolute, relative, uncertain, "
-    "recurring} — NEVER convert week references to real dates. Notation:\n"
+    "recurring} — NEVER convert week references to real dates.\n"
+    "학년도: the text must literally contain that year in a 학년도/학기/semester "
+    "context — NEVER guess a year that is not in the text (검수자 신뢰 문제로 반복 "
+    "지적된 환각이다). 강의실: period codes like P1/1A or 'P1(09:00~10:40)' are "
+    "CLASS TIMES, never classrooms. Notation:\n"
     + NOTATION +
     "\nReturn a JSON object with exactly these keys: " + ", ".join(FIELDS)
 )
+
+
+def _evidence_gates(out: dict, text: str) -> dict:
+    """LLM 초안의 반복 오류를 결정론으로 차단 — 검수자가 본 것: 단국대 학년도
+    '2022' 환각(문서에 연도 자체가 없음, B5-016/032), 교시 코드의 강의실 오파싱
+    (B5-007/034/038), 없는 시각의 수업시간 날조(B5-006)."""
+    v = out.get("학년도")
+    if v:
+        yrs = re.findall(r"20\d{2}", str(v))
+        if not yrs or any(y not in text for y in yrs):
+            out["학년도"] = None
+    v = out.get("강의실")
+    if v and re.fullmatch(r"P?\d{1,2}[A-Z]?\s*(?:\(\s*\d{1,2}:\d{2}[^)]*\))?|\d{1,2}",
+                          str(v).strip(), re.IGNORECASE):
+        out["강의실"] = None
+    v = out.get("수업시간")
+    if v:
+        times = re.findall(r"\d{1,2}:\d{2}", str(v))
+        if any(t not in text for t in times):
+            out["수업시간"] = None
+    return out
 
 
 def _sim(a: dict, b: dict) -> float:
@@ -122,7 +147,7 @@ def draft_one(client, model: str, row: dict) -> dict:
                     and not re.fullmatch(r"(?:e-?\s?(?:mail|메일)|이메일|email|전화번호|phone|tel)", s, re.IGNORECASE)]
             v = " ; ".join(segs) or None
         out[f] = v
-    return out
+    return _evidence_gates(out, row["source_text"])
 
 
 def corpus_rows(n: int, seed: int, exclude_doc_ids: set = frozenset(), id_prefix: str = "B2") -> list[dict]:

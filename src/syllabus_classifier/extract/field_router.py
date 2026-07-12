@@ -147,6 +147,7 @@ def extract_subsystem(doc, classifier=None) -> dict:
         return merged
 
     plan = parse_weekly_plan(doc)
+    others: list[dict] = []
     seen_keys = {(e.get("type"), e["raw_reference"]) for e in exams} | \
                 {(None, a["raw_reference"]) for a in assignments}
     for ev in plan.events:
@@ -155,7 +156,8 @@ def extract_subsystem(doc, classifier=None) -> dict:
             continue
         entry = {k: ev[k] for k in ("title", "type", "raw_reference", "date_kind",
                                     "resolved_date", "resolved_by", "needs_review") if k in ev}
-        (exams if ev["kind"] == "exam" else assignments).append(entry)
+        bucket = {"exam": exams, "assignment": assignments}.get(ev["kind"], others)
+        bucket.append(entry)
 
     return {
         "meeting.status": status,
@@ -164,6 +166,7 @@ def extract_subsystem(doc, classifier=None) -> dict:
         "instructors.office_hours": office_hours,
         "schedule.exams": exams,
         "schedule.assignments": assignments,
+        "schedule.others": others,
         "schedule.weekly_plan": [
             {"week": r.week, "date_range": r.date_range, "topic": _topic_with_extras(r),
              "textbook_range": r.textbook_range, "remarks": r.remarks,

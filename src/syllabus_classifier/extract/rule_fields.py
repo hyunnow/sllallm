@@ -92,8 +92,13 @@ def find_labeled_values(doc, field: str) -> list[str]:
     found: list[str] = []
 
     def is_label(cell: str) -> bool:
-        n = _norm(cell)
-        return bool(n) and any(n.startswith(a) and len(n) <= len(a) + 14 for a in norm_aliases)
+        # 라벨 셀은 흔히 한/영 2줄("개설학기\nYear - Semester") — 줄 단위로도 대조해야
+        # 길이 제한(+14)에 안 걸린다 (B5-002 홍익/단국 그리드형)
+        for line in (cell or "").splitlines():
+            n = _norm(line)
+            if n and any(n.startswith(a) and len(n) <= len(a) + 14 for a in norm_aliases):
+                return True
+        return False
 
     for page in doc.pages:
         for table in page.tables:
@@ -174,6 +179,13 @@ def extract_academic_year(doc) -> Optional[int]:
         # a labeled value that is a full date is a print date, not a year
         if m and not _FULL_DATE.search(v):
             return int(m.group(0))
+    # "개설학기 | 2026 - 5": 학기 라벨 값이 연도를 지니는 그리드형 (B5-002 홍익) —
+    # 연도-코드 형태일 때만 (bare 연도 금지 원칙 유지: 라벨+형태 이중 증거)
+    v = labeled_value(doc, "term")
+    if v:
+        m = re.search(r"\b(20\d{2})\s*[-–.]\s*\d{1,2}\b", v)
+        if m and not _FULL_DATE.search(v):
+            return int(m.group(1))
     return None
 
 
@@ -193,6 +205,13 @@ def extract_term(doc) -> Optional[str]:
     if m:
         key = (m.group(1) or m.group(2) or m.group(3) or "").lower()
         return _SEASON.get(key)
+    # 라벨형: "개설학기 | 2026 - 5" (홍익/단국 그리드) — 코드 1/2만 계절로 변환,
+    # 3+ (계절학기 코드)는 의미 미상이라 abstain (B5-002: 코드 5 → 빈칸이 정답)
+    v = labeled_value(doc, "term")
+    if v:
+        m = re.search(r"(?:20\d{2}\s*[-–.]\s*)?([12])\s*$", v.strip())
+        if m:
+            return _SEASON[m.group(1)]
     return None
 
 
@@ -306,9 +325,10 @@ def extract_course_code(doc, title_candidates: "list[str] | None" = None) -> Opt
     header region (syllabi print the code up top). Never a blocklisted token."""
     v = labeled_value(doc, "course_code")
     if v:
-        m = re.search(r"[A-Za-z]{2,6}[-_ ]?\d{2,5}[A-Za-z0-9.\-]*|\d{4,8}", v)
+        # 숫자형 코드는 분반 접미를 지닌다: "567140-1", "120845- 001" (B5-031/037)
+        m = re.search(r"[A-Za-z]{2,6}[-_ ]?\d{2,5}[A-Za-z0-9.\-]*|\d{4,8}(?:\s*-\s*\d{1,3})?", v)
         if m:
-            return m.group(0).strip()
+            return re.sub(r"\s+", "", m.group(0))
     for t in title_candidates or []:
         code = find_course_code(t)
         if code:
@@ -392,6 +412,20 @@ def extract_rule_fields(doc) -> dict:
     if raw_time and not _TIME_EVIDENCE.search(raw_time):
         raw_time = None
 
+    # 교시 코드(P1, 1A)나 시간범위 딸린 교시("P1(09:00~10:40)"), 1-2자리 bare 숫자는
+    # 강의실이 아니다 — 시간표가 강의실 칸으로 새는 반복 오파싱 차단 (B5-007/034/038)
+    location = labeled_value(doc, "location")
+    if location and re.fullmatch(
+            r"P?\d{1,2}[A-Z]?\s*(?:\(\s*\d{1,2}:\d{2}[^)]*\))?|\d{1,2}", location.strip(), re.I):
+        location = None
+
+    # 직함은 이름이 아니다: "Professor Avi Giloni" → "Avi Giloni" (B5-015 gold)
+    instructor = labeled_value(doc, "instructor")
+    if instructor:
+        instructor = re.sub(r"^\s*(?:professor|prof\.?|dr\.?|instructor)\s+", "", instructor,
+                            flags=re.IGNORECASE)
+        instructor = re.sub(r"\s*교수(?:님)?\s*$", "", instructor).strip() or None
+
     return {
         "meta.school": school,
         "meta.campus": campus,
@@ -404,11 +438,11 @@ def extract_rule_fields(doc) -> dict:
         "course.credits": credits,
         "course.classification": labeled_value(doc, "classification"),
         "course.target_students": labeled_value(doc, "target_students"),
-        "instructors.name": labeled_value(doc, "instructor"),
+        "instructors.name": instructor,
         "instructors.email": emails[0] if emails else None,
         "instructors.phone": phones[0] if phones else None,
         "instructors.office": labeled_value(doc, "office"),
-        "meeting.location": labeled_value(doc, "location"),
+        "meeting.location": location,
         "meeting.raw_time": raw_time,
         "admin.attendance_policy": labeled_value(doc, "attendance_policy"),
     }

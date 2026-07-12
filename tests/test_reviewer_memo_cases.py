@@ -250,3 +250,83 @@ def test_b4_024_class_time_day_word_and_dash_equivalence():
     assert values_match("수업시간", "Mon 16:55-19:35", "Mondays 16:55–19:35")
     assert values_match("수업시간", "화 09:00-10:15", "화요일 09:00~10:15")
     assert not values_match("수업시간", "Mon 16:55-19:35", "Tuesdays 16:55–19:35")
+
+
+# --- 배치5 메모 대응 (2026-07-12) --------------------------------------------
+
+def _grid_doc(rows, text=""):
+    from syllabus_classifier.extract.normalize_doc import NormalizedDoc, Page, Table
+    return NormalizedDoc(doc_id="t", pages=[Page(page_no=1, text=text,
+                                                 tables=[Table(header=[], rows=rows)])])
+
+
+def test_b5_002_bilingual_label_grid_year_and_seasonal_code():
+    # "개설학기\nYear - Semester | 2026 - 5" (홍익 그리드): 연도는 2026,
+    # 학기 코드 5(계절)는 의미 미상 → abstain. 코드 1이면 봄.
+    from syllabus_classifier.extract.rule_fields import extract_academic_year, extract_term
+
+    d5 = _grid_doc([["개설학기\nYear - Semester", "2026 - 5"]])
+    assert extract_academic_year(d5) == 2026
+    assert extract_term(d5) is None
+    d1 = _grid_doc([["개설학기\nYear - Semester", "2026 - 1"]])
+    assert extract_academic_year(d1) == 2026
+    assert extract_term(d1) == "봄"
+
+
+def test_b5_034_period_codes_are_not_classrooms():
+    # P1(09:00~10:40) / 1A(...) / bare 2자리 숫자는 강의실이 아니다 — abstain.
+    from syllabus_classifier.extract.rule_fields import extract_rule_fields
+
+    for bad in ["P1(09:00~10:40)", "1A(09:00-11:30)", "P1", "45"]:
+        doc = _grid_doc([["강의실\nClassroom", bad]])
+        assert extract_rule_fields(doc)["meeting.location"] is None, bad
+    ok = _grid_doc([["강의실\nClassroom", "K411"]])
+    assert extract_rule_fields(ok)["meeting.location"] == "K411"
+
+
+def test_b5_015_instructor_title_stripped():
+    from syllabus_classifier.extract.rule_fields import extract_rule_fields
+
+    doc = _grid_doc([["INSTRUCTOR", "Professor Avi Giloni"]])
+    assert extract_rule_fields(doc)["instructors.name"] == "Avi Giloni"
+    doc2 = _grid_doc([["담당교수", "박병남 교수"]])
+    assert extract_rule_fields(doc2)["instructors.name"] == "박병남"
+
+
+def test_b5_013_no_lab_exam_week_is_not_an_exam_event():
+    # "Mid-Term( no lab )" 주차행은 시험 이벤트가 아니라 기간 표시 (B4-008 재발)
+    from syllabus_classifier.extract.normalize_doc import Table
+    from syllabus_classifier.extract.field_router import extract_subsystem
+
+    t = Table(header=["주차", "수업내용"],
+              rows=[["1", "Exp.1 Basic techniques"], ["2", "Mid-Term( no lab )"],
+                    ["3", "Exp.2 Limiting reactants"]])
+    sub = extract_subsystem(_tbl_doc(t))
+    assert sub["schedule.exams"] == []
+
+
+def _tbl_doc(t):
+    from syllabus_classifier.extract.normalize_doc import NormalizedDoc, Page
+    return NormalizedDoc(doc_id="t", pages=[Page(page_no=1, text="", tables=[t])])
+
+
+def test_b5_013_hybrid_null_exam_suppressed_by_no_lab_week():
+    from syllabus_classifier.extract.event_hybrid import suppress_no_session_exams
+
+    events = [{"title": "Mid-Term", "kind": "exam", "raw_reference": "null", "date_kind": "uncertain"},
+              {"title": "Exp.2 report", "kind": "assignment", "raw_reference": "Week 4", "date_kind": "relative"}]
+    weekly = [{"topic": "Mid-Term( no lab )"}, {"topic": "Exp.2 Limiting reactants"}]
+    out = suppress_no_session_exams(events, weekly)
+    assert [e["title"] for e in out] == ["Exp.2 report"]
+
+
+def test_b5_037_bracket_tagged_rows_become_other_events():
+    from syllabus_classifier.extract.normalize_doc import Table
+    from syllabus_classifier.extract.field_router import extract_subsystem
+
+    t = Table(header=["주차", "수업내용"],
+              rows=[["1", "아이디어 발상 기법"], ["2", "[Workshop] 창의적 아이디어 도출"],
+                    ["3", "[Mentoring] 중간 전략 점검"], ["4", "파이널 데모데이 (Mock IR)"]])
+    sub = extract_subsystem(_tbl_doc(t))
+    refs = {e["raw_reference"] for e in sub["schedule.others"]}
+    assert refs == {"Week 2", "Week 3", "Week 4"}

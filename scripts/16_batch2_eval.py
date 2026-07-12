@@ -64,7 +64,8 @@ def main() -> int:
     if not args.no_hybrid:
         from syllabus_classifier.common.env import load_env_key
         from syllabus_classifier.extract.event_hybrid import (
-            llm_read_events, merge_events, risk_gate, serialize_events, suppress_scheduled,
+            llm_read_events, merge_events, risk_gate, serialize_events,
+            suppress_no_session_exams, suppress_scheduled,
         )
         from syllabus_classifier.extract.field_router import extract_subsystem
 
@@ -96,9 +97,12 @@ def main() -> int:
                 dated, undated = risk_gate(cache[sid], text)
                 sub = extract_subsystem(doc)
                 table_evs = [{**e, "kind": "exam"} for e in sub.get("schedule.exams", [])] + \
-                            [{**e, "kind": "assignment"} for e in sub.get("schedule.assignments", [])]
+                            [{**e, "kind": "assignment"} for e in sub.get("schedule.assignments", [])] + \
+                            [{**e, "kind": "other"} for e in sub.get("schedule.others", [])]
                 merged = merge_events(table_evs, dated)
-                undated = suppress_scheduled(undated, merged, sub.get("schedule.weekly_plan") or [])
+                weekly = sub.get("schedule.weekly_plan") or []
+                merged = suppress_no_session_exams(merged, weekly)
+                undated = suppress_scheduled(undated, merged, weekly)
                 preds["ours_hybrid"][(sid, "이벤트")] = serialize_events(merged)
                 preds["ours_hybrid"][(sid, "무기한과제")] = " ; ".join(undated) or None
 

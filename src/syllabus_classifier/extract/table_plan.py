@@ -47,6 +47,12 @@ _FILENAMEY = re.compile(r"\.(pdf|pptx?|hwp|docx?|zip)\b|week\s*\d+\s*$", re.I)
 
 _EXAM_CUE = re.compile(r"중간\s*고사|기말\s*고사|중간\s*시험|기말\s*시험|midterm|final\s*exam|\bexam\b|퀴즈|quiz|시험", re.I)
 _ASSIGN_CUE = re.compile(r"과제|assignment|homework|레포트|리포트|report\s*due|제출|presentation|발표", re.I)
+# "Mid-Term (no lab)": 시험 주간이라 수업/실험이 없다는 기간 표시지 시험 이벤트가
+# 아니다 — 실험과목에서 반복 관찰 (B4-008, B5-013)
+_NO_SESSION = re.compile(r"no\s*(?:lab|class)|수업\s*없음|실험\s*없음|휴강", re.I)
+# 주차표 토픽의 대괄호 태그([Event]/[Workshop]/[Mentoring]/[Mini Project])와 데모데이는
+# 일정성 산출물 — other 이벤트로 승격 (B5-037 gold)
+_OTHER_TAG = re.compile(r"\[\s*(?:event|workshop|mentoring|mini\s*project)\s*\]|데모\s*데이", re.I)
 
 
 @dataclass
@@ -173,8 +179,20 @@ def _events_from_rows(rows: list[PlanRow]) -> list[dict]:
         sources += [(ln[:80], ln) for ln in (r.extras or [])]
         seen_kinds = set()
         for title, blob in sources:
+            if _NO_SESSION.search(blob):
+                continue                    # 시험 주간 표시("Mid-Term (no lab)") ≠ 시험
             is_exam = _EXAM_CUE.search(blob)
             is_assign = _ASSIGN_CUE.search(blob)
+            is_other = _OTHER_TAG.search(blob)
+            if is_other and not is_exam:
+                events.append({
+                    "title": title, "type": None, "kind": "other",
+                    "raw_reference": f"Week {r.week}", "date_kind": "relative",
+                    "resolved_date": resolved if full else None,
+                    "resolved_by": "in_document" if full else None,
+                    "needs_review": not full,
+                })
+                continue
             if not (is_exam or is_assign):
                 continue
             # 혼합 단서("Homework & Quiz")는 assignment — 시험 오탐이 더 해롭다 (§3-9)
