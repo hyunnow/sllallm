@@ -151,15 +151,17 @@ def test_b3_005_school_from_email_domain():
     assert school is None
 
 
-def test_b3_010_school_from_nfd_filename():
+def test_b5_005_collection_filename_is_not_school_evidence():
     import unicodedata
     from syllabus_classifier.extract.rule_fields import extract_school_campus
     from syllabus_classifier.extract.normalize_doc import NormalizedDoc, Page
-    # macOS 파일명은 NFD 자모 — 본문에 학교명이 없는 kocw류는 파일명이 유일 증거
+    # 2026-07-12 사용자 판정(B5-005/024 gold=null): 수집 파일명(doc_id)은 대학 증거가
+    # 아니다 — 배치3 시절의 파일명 폴백(구 b3_010 테스트)을 철회. 본문·이메일에
+    # 학교가 없으면 abstain.
     nfd_id = unicodedata.normalize("NFD", "kocw_syllabi__18_국민대__분석화학__x")
     d = NormalizedDoc(doc_id=nfd_id, pages=[Page(page_no=1, text="주차별 강의계획", tables=[])])
     school, _ = extract_school_campus(d)
-    assert school == "국민대학교"
+    assert school is None
 
 
 # --- 2026-07-10 사용자 결정: 무기한 항목 통일 + 수업시간 요일묶음 동치 ---------------
