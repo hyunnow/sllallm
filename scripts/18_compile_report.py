@@ -60,7 +60,12 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--model", default="heuristic",
                     help="'heuristic'(기본) 또는 학습 체크포인트 경로")
+    ap.add_argument("--current-year", type=int, default=None,
+                    help="이 연도보다 과거인 확정 이벤트는 needs_review로 (v7 §0; 기본=오늘 연도)")
     args = ap.parse_args()
+
+    import datetime as _dt
+    current_year = args.current_year if args.current_year is not None else _dt.date.today().year
 
     from syllabus_classifier.model import load_classifier
     clf = load_classifier(args.model)
@@ -89,7 +94,7 @@ def main() -> int:
     for fp in files:
         doc = NormalizedDoc.from_dict(json.loads(fp.read_text(encoding="utf-8")))
         record = build_record(doc, route_document(doc, classifier=clf))
-        out = compile_record(record, kb=kb)
+        out = compile_record(record, kb=kb, current_year=current_year)
         stats["docs"] += 1
         stats["confirmed"] += out["stats"]["confirmed"]
         stats["timetable_slots"] += out["stats"]["timetable_slots"]

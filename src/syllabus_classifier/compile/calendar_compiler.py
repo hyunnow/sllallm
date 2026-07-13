@@ -39,6 +39,11 @@ _NON_EVENT_TITLE = re.compile(
 _LABELISH_TITLE = re.compile(
     r"^\s*(?:\d{1,3}|week\s*\d+.*|제?\s*\d+\s*주차?.*|제출일|출제일|시험일|마감일?|날짜|일시)\s*$",
     re.IGNORECASE)
+# 제목이 주차/요일 마커인 이벤트 = 주차 일정 행이 시험/과제로 오추출된 것. 그 행의
+# 날짜(주차 topic 날짜)를 시험 날짜로 확정하면 안 된다 (UNIST 2026: "Week 5
+# (Tuesday 2026-04-02)"가 시험으로 새어 실제 TBA 시험을 4/2에 가짜 확정). 거부.
+_WEEK_MARKER_TITLE = re.compile(
+    r"^\s*(?:week\s*\d+|제?\s*\d+\s*주차|\d+\s*(?:st|nd|rd|th)?\s*week)\b", re.IGNORECASE)
 _BYDAY = {"Mon": "MO", "Tue": "TU", "Wed": "WE", "Thu": "TH", "Fri": "FR",
           "Sat": "SA", "Sun": "SU"}
 _WD_INDEX = {"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6}
@@ -80,9 +85,15 @@ def _review(summary: str, reason: str, **extra) -> dict:
 
 
 def compile_record(record: dict, kb: Optional[KBResolver] = None,
-                   compile_office_hours: bool = False) -> dict:
+                   compile_office_hours: bool = False,
+                   current_year: Optional[int] = None) -> dict:
     """record (record_builder 산출) -> 3-버킷 캘린더. resolve_record_dates를
-    내부에서 호출하므로 미해석 record를 그대로 넣어도 된다."""
+    내부에서 호출하므로 미해석 record를 그대로 넣어도 된다.
+
+    current_year (제품 배포 시 오늘 연도 전달): 지정하면 그 연도보다 과거인 확정
+    이벤트를 needs_review로 내린다 — v7 §0 제품은 현재·다가올 학기용이지 과거 학기
+    아카이브가 아니다. 코퍼스의 kocw 옛 실라버스(2013~2024)가 과거 시험을 확정
+    이벤트로 만드는 것을 막는다. 기본 None = 필터 없음(라이브러리 결정론)."""
     kb = kb or KBResolver()
     resolve_record_dates(record, kb=kb)
 
@@ -155,10 +166,30 @@ def compile_record(record: dict, kb: Optional[KBResolver] = None,
                 review.append(_review(f"{title} (면담)", "면담시간은 확정 캘린더 비대상 (옵션 카테고리)",
                                       raw=oh.get("raw") if isinstance(oh, dict) else str(oh)))
 
+    # 연도 sanity 기준: 학년도 > 문서 내 지배 연도. 학년도가 없어도(bare 날짜뿐인
+    # 문서) 문서가 스스로 쓰는 연도에서 크게 벗어난 확정일은 오타/오파싱이다
+    # (회사법1: 주차표 2016×N에 '2076-10-20' 한 건 — 원본 1→7 오타).
+    from collections import Counter as _Counter
+
+    _yrs: _Counter = _Counter()
+    for _k in ("exams", "assignments"):
+        for _e in record.get("schedule", {}).get(_k, []):
+            _rd = _e.get("resolved_date")
+            if _rd and _e.get("date_kind") == "absolute":
+                _yrs[str(_rd)[:4]] += 1
+    doc_year = meta.get("academic_year") or (int(_yrs.most_common(1)[0][0]) if _yrs else None)
+
     # --- 시험 / 과제 (단일) -------------------------------------------------
     for kind, label in (("exams", "시험"), ("assignments", "과제")):
         for e in record.get("schedule", {}).get(kind, []):
-            summary = e.get("title") or f"{title} ({label})"
+            orig_title = e.get("title") or ""
+            # 주차/요일 마커 제목 = 주차 일정 행 오추출 → 실제 이벤트 아님, 날짜 확정 금지
+            if _WEEK_MARKER_TITLE.match(orig_title):
+                review.append(_review(f"{title} ({label})",
+                                      "주차 일정 행이 시험/과제로 오추출 (실제 이벤트 아님)",
+                                      raw_reference=e.get("raw_reference")))
+                continue
+            summary = orig_title or f"{title} ({label})"
             if _LABELISH_TITLE.match(summary):
                 summary = f"{title} ({label})"
             if e.get("date_kind") == "recurring":
@@ -170,10 +201,14 @@ def compile_record(record: dict, kb: Optional[KBResolver] = None,
                 review.append(_review(summary, "문서 메타데이터/인용 날짜 의심 — 일정 아님",
                                       raw_reference=e.get("raw_reference")))
                 continue
-            ay = meta.get("academic_year")
-            if rd and ay and abs(int(str(rd)[:4]) - int(ay)) > 1:
-                review.append(_review(summary, f"학년도({ay})와 동떨어진 연도({str(rd)[:4]}) — "
-                                               "인용/과거 날짜 의심",
+            if rd and doc_year and abs(int(str(rd)[:4]) - int(doc_year)) > 1:
+                ref = "학년도" if meta.get("academic_year") else "문서 지배연도"
+                review.append(_review(summary, f"{ref}({doc_year})와 동떨어진 연도({str(rd)[:4]}) — "
+                                               "오타/인용/과거 날짜 의심",
+                                      raw_reference=e.get("raw_reference")))
+                continue
+            if rd and current_year and int(str(rd)[:4]) < current_year:
+                review.append(_review(summary, f"과거 학기({str(rd)[:4]}) — 현재/다가올 학기 아님",
                                       raw_reference=e.get("raw_reference")))
                 continue
             if rd and not e.get("needs_review"):

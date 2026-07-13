@@ -133,3 +133,47 @@ def test_metadata_and_citation_dates_never_confirm():
     assert out["confirmed_events"] == []
     reasons = " / ".join(e["review_reason"] for e in out["needs_review_events"])
     assert "메타데이터" in reasons and "동떨어진 연도" in reasons
+
+
+# --- e2e 눈검수(v3 §11)에서 잡은 실버그 3종 회귀 고정 (2026-07-13) ------------------
+
+def test_absurd_year_blocked_by_document_dominant_year():
+    # 회사법1: 주차표 2016×N 사이에 오타 '2076-10-20' 한 건 → 문서 지배연도(2016)
+    # 기준으로 확정 차단 (academic_year 없어도)
+    r = _record(status="not_specified", raw_time=None)
+    r["meta"]["academic_year"] = None                # 학년도 없음 → 문서 지배연도 가드 검증
+    for d in ("2016-10-13", "2016-12-16", "2076-10-20"):
+        r["schedule"]["exams"].append({
+            "title": "중간고사", "date_kind": "absolute", "raw_reference": d,
+            "resolved_date": d, "needs_review": False})
+    out = compile_record(r, kb=_kb())
+    dates = {e["dtstart"] for e in out["confirmed_events"]}
+    assert "2076-10-20" not in dates and "2016-10-13" in dates
+    assert any("2076" in e["review_reason"] for e in out["needs_review_events"])
+
+
+def test_week_marker_titled_event_is_rejected_not_confirmed():
+    # UNIST 2026: "Week 5 (Tuesday 2026-04-02)" 주차행이 시험으로 오추출 →
+    # 그 주차 날짜를 시험으로 확정하면 안 된다 (실제 시험은 Week 8 TBA)
+    r = _record(status="present", raw_time="월 2교시")
+    r["schedule"]["exams"].append({
+        "title": "Week 5 (Tuesday", "date_kind": "absolute",
+        "raw_reference": "2026-04-02", "resolved_date": "2026-04-02", "needs_review": False})
+    out = compile_record(r, kb=_kb(), current_year=2026)
+    assert all("2026-04-02" != e.get("dtstart") for e in out["confirmed_events"])
+    assert any("오추출" in e["review_reason"] for e in out["needs_review_events"])
+
+
+def test_current_year_filter_drops_past_term_events():
+    # v7 §0: 과거 학기 실라버스(2019)의 시험은 확정 캘린더 대상 아님
+    r = _record(status="not_specified", raw_time=None)
+    r["meta"]["academic_year"] = None                # 학년도 가드와 독립적으로 현재연도 필터만 검증
+    r["schedule"]["exams"].append({
+        "title": "기말고사", "date_kind": "absolute", "raw_reference": "2019-12-17",
+        "resolved_date": "2019-12-17", "needs_review": False})
+    # current_year 미지정: 필터 없음(라이브러리 결정론)
+    assert compile_record(r, kb=_kb())["confirmed_events"]
+    # current_year=2026: 과거 이벤트 → needs_review
+    out = compile_record(r, kb=_kb(), current_year=2026)
+    assert out["confirmed_events"] == []
+    assert any("과거 학기" in e["review_reason"] for e in out["needs_review_events"])
