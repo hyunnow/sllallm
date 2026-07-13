@@ -95,6 +95,11 @@ _GENERIC_ASSIGN_WORDS = {
 }
 
 
+# 무기한과제는 gold 자체가 'Homework' 단독을 문서마다 다르게 판정한다(B4-016/021은
+# 인정, B3-005/036·B4-020은 빈칸) — 제목만으론 학습 불가. 번호/시기 접두 제네릭을
+# 더 걷어내려 시도했으나 holdout에서 정답(gold-kept Homework)까지 날려 정밀도가
+# 29→15로 떨어졌다(2026-07-13 실측). 그래서 배치4 경계를 그대로 둔다: 전 단어가
+# rubric 집합이면 드롭, homework/hw/숙제 단독은 통과.
 def _is_generic_assignment_title(title: str) -> bool:
     words = re.findall(r"[a-zA-Z가-힣]+", (title or "").lower())
     return bool(words) and all(w in _GENERIC_ASSIGN_WORDS for w in words)

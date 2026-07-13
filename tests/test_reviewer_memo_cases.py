@@ -431,3 +431,32 @@ def test_b6_001_chrome_only_text_is_low_content():
     # 실제 내용이 있으면 통과
     real = "자료구조 강의계획서 이 과목은 배열 리스트 스택 큐 트리를 다룬다 " * 3
     assert not is_low_content(real, npages=1)
+
+
+# --- ② 약한 필드: 강의실/교수 위생 (2026-07-13) ----------------------------------
+
+def test_room_extracted_from_combined_time_cell():
+    from syllabus_classifier.extract.rule_fields import _clean_location, _room_from_meeting
+    # "월2,3,4,5,6,7(사범313)" → 방만 (B2-010/013/020/022/026 err 무리)
+    assert _clean_location("월2,3,4,5,6,7(사범313)") == "사범313"
+    assert _clean_location("금1,2,3,4,5,6(상경419)") == "상경419"
+    assert _room_from_meeting("월9,10,11/수9,10,11(소프트102)") == "소프트102"
+    # 시각·분·요일뿐인 괄호는 강의실이 아니다
+    assert _room_from_meeting("Mon 10:00(100)") is None
+    assert _clean_location("P1(09:00~10:40)") is None
+    # 건물-호실 코드는 그대로
+    assert _clean_location("108-319(E)") == "108-319(E)"
+    assert _clean_location("106-T101") == "106-T101"
+
+
+def test_instructor_strips_label_prefix_and_inline_email():
+    from syllabus_classifier.extract.rule_fields import _clean_instructor
+    assert _clean_instructor("이름: 김형민") == "김형민"          # B4-006
+    assert _clean_instructor("성명: 홍길동") == "홍길동"
+    assert _clean_instructor("홍길동") == "홍길동"                # 접두 없으면 그대로
+    assert _clean_instructor("Professor Avi Giloni") == "Avi Giloni"  # B5-015 유지
+    # 괄호 안 이메일 제거, 한글 이름 괄호는 유지 (B3-002)
+    at = "@"
+    assert _clean_instructor(f"Bo-Hae Im (임보해, bhim{at}kaist.ac.kr)") == "Bo-Hae Im (임보해)"
+    # 괄호가 이메일뿐이면 껍데기째 제거 (B3-020)
+    assert _clean_instructor(f"Yong-Jung Kim (yongkim{at}kaist.ac.kr)") == "Yong-Jung Kim"

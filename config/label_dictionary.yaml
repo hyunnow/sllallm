@@ -13,7 +13,7 @@ labels:
   school: ["대학명", "학교", "University"]
   campus: ["캠퍼스", "Campus"]
   department: ["개설학과", "학과", "소속", "개설 학과", "학부", "Department", "Dept"]
-  instructor: ["담당교수", "교수명", "교강사", "담당 교수", "Instructor", "Professor", "교수자"]
+  instructor: ["담당교수", "교수명", "교강사", "담당 교수", "Instructor", "Professor", "교수자", "이름", "성명", "담당교원", "교원"]
   affiliation: ["담당교수소속", "소속", "Affiliation"]
   office: ["연구실", "교수연구실", "Office", "Office Location"]
   phone: ["전화", "전화번호", "연락처", "Phone", "Tel", "휴대폰", "H.P"]

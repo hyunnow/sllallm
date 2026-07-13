@@ -382,6 +382,61 @@ _TIME_EVIDENCE = re.compile(
     r"[월화수목금토일]|(?:mon|tue|wed|thu|fri|sat|sun)|\d{1,2}\s*[:시]\s*\d{0,2}|교시|am|pm", re.I)
 
 
+# --- 강의실/교수 위생 (② 약한 필드) --------------------------------------------
+
+_PERIODCODE_ONLY = re.compile(r"P?\d{1,2}[A-Z]?\s*(?:\(\s*\d{1,2}:\d{2}[^)]*\))?|\d{1,2}", re.I)
+# 결합 셀의 강의실 = 교시/요일 나열 뒤 꼬리 괄호 "(사범313)" / "(소프트102)".
+# 괄호 안이 순수 시각·분(100)·요일·교시면 강의실이 아니다.
+_ROOM_PAREN = re.compile(r"\(([^)]*[가-힣A-Za-z][^)]*)\)\s*$")
+_ROOM_CODE = re.compile(r"^\s*(\d{2,4}-[A-Za-z]?\d{1,4}(?:\([A-Za-z]\))?)\s*$")
+_TIMEISH_DAYS = re.compile(r"[월화수목금토일]|mon|tue|wed|thu|fri|sat|sun|교시|\d{1,2}:\d{2}", re.I)
+
+
+def _room_from_meeting(value: str) -> Optional[str]:
+    """'월2,3,4(사범313)' 같은 결합 표기에서 강의실만. 시각/분/요일뿐인 괄호는 제외."""
+    m = _ROOM_PAREN.search(value or "")
+    if not m:
+        return None
+    room = m.group(1).strip()
+    if re.fullmatch(r"[\d:~\-\s]+", room) or re.fullmatch(r"\d{2,3}", room):
+        return None                                  # (09:00~10:40) / (100)분 — 강의실 아님
+    return room
+
+
+def _clean_location(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    v = value.strip()
+    if _PERIODCODE_ONLY.fullmatch(v):
+        return None                                  # 교시 코드가 강의실 칸으로 샌 것
+    if _ROOM_CODE.match(v):
+        return _ROOM_CODE.match(v).group(1)          # 108-319(E), 106-T101 — 그대로
+    # 결합 셀이면 꼬리 괄호의 방을 취한다 (요일·교시 나열 + (방))
+    if _TIMEISH_DAYS.search(v):
+        room = _room_from_meeting(v)
+        return room or None
+    return v
+
+
+_NAME_LABEL_PREFIX = re.compile(r"^\s*(?:이름|성명|담당\s*교수|담당|교수|instructor|professor|name)\s*[:：]\s*", re.I)
+_TITLE_PREFIX = re.compile(r"^\s*(?:professor|prof\.?|dr\.?|instructor)\s+", re.I)
+_EMAIL_INLINE = re.compile(r"[,\s]*[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+
+
+def _clean_instructor(value: Optional[str]) -> Optional[str]:
+    """직함·라벨 접두 제거 + 괄호 안팎 이메일 제거 (B3-002/020/036, B4-006)."""
+    if not value:
+        return None
+    v = _NAME_LABEL_PREFIX.sub("", value)
+    v = _TITLE_PREFIX.sub("", v)
+    v = _EMAIL_INLINE.sub("", v)                      # "(임보해, bhim@…)" → "(임보해)"
+    v = re.sub(r"\(\s*\)", "", v)                     # 이메일만 있던 괄호는 빈 껍데기 → 제거
+    v = re.sub(r"\s*교수(?:님)?\s*$", "", v)
+    # 뒤따르는 다른 라벨 조각 컷 ("홈페이지:" 등)은 labeled_value가 이미 처리
+    v = v.strip(" ,:：\t")
+    return v or None
+
+
 def extract_rule_fields(doc) -> dict:
     """One pass over a NormalizedDoc -> flat {field_path: value} for the rule method."""
     school, campus = extract_school_campus(doc)
@@ -424,17 +479,12 @@ def extract_rule_fields(doc) -> dict:
 
     # 교시 코드(P1, 1A)나 시간범위 딸린 교시("P1(09:00~10:40)"), 1-2자리 bare 숫자는
     # 강의실이 아니다 — 시간표가 강의실 칸으로 새는 반복 오파싱 차단 (B5-007/034/038)
-    location = labeled_value(doc, "location")
-    if location and re.fullmatch(
-            r"P?\d{1,2}[A-Z]?\s*(?:\(\s*\d{1,2}:\d{2}[^)]*\))?|\d{1,2}", location.strip(), re.I):
-        location = None
+    location = _clean_location(labeled_value(doc, "location"))
+    # 결합 셀("월2,3(사범313)")로 강의실을 못 얻으면 수업시간 문자열 꼬리 괄호에서 회수
+    if location is None and raw_time:
+        location = _room_from_meeting(raw_time)
 
-    # 직함은 이름이 아니다: "Professor Avi Giloni" → "Avi Giloni" (B5-015 gold)
-    instructor = labeled_value(doc, "instructor")
-    if instructor:
-        instructor = re.sub(r"^\s*(?:professor|prof\.?|dr\.?|instructor)\s+", "", instructor,
-                            flags=re.IGNORECASE)
-        instructor = re.sub(r"\s*교수(?:님)?\s*$", "", instructor).strip() or None
+    instructor = _clean_instructor(labeled_value(doc, "instructor"))
 
     return {
         "meta.school": school,
