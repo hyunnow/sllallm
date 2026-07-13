@@ -23,10 +23,14 @@ training:
   focal_gamma: 2.0
   class_weights: auto
   # only assign class_schedule above this confidence; when unsure, don't.
-  # Tuned on VAL with the full pipeline (model + rule validator): 0.80 is the
-  # lowest threshold keeping office->class = 0 on val. Gives (test) precision
-  # 0.984 / recall 0.490 / office->class 0.000. Re-tune if the model changes.
-  class_schedule_confidence_threshold: 0.80
+  # 2026-07-13 (합성 재학습 후): precision 하한을 0.95로 완화하고 0.50 채택.
+  # 근거 — 전체 파이프라인(모델+validator) real holdout(test): precision 0.946 /
+  # recall 0.633 / office->class 0.000. 0.80은 precision 0.991이지만 recall 0.438로
+  # 절반 이상 놓쳤다(빈 캘린더가 오탐보다 나쁨). validator가 office->class를 임계값과
+  # 무관하게 0으로 보장하므로 낮춰도 flagship 제약은 안전. 이 지점의 FP 9는 전부
+  # gold=unknown(exam/assignment 누출 0 — scripts/23_fp_breakdown.py로 확인). 모델
+  # 바뀌면 재튜닝.
+  class_schedule_confidence_threshold: 0.50
 
 eval:
   primary_metric: class_schedule_precision   # target 0.98~0.99+

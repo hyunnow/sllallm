@@ -77,9 +77,11 @@ def validate_candidate(
     Returns the possibly-corrected classification and, if the candidate was
     rejected from class_schedule, a rejection record for audit.
 
-    block_events (기본 OFF — 증거 확인 전 파이프라인 동작 불변): True면 exam/assignment
-    문맥의 class_schedule을 office와 동일하게 차단한다. 임계값 0.5 전환 시 FP 분해
-    증거를 보고 켠다 (scripts/23_fp_breakdown.py).
+    block_events (기본 OFF — 휴면 안전망): True면 exam/assignment 문맥의
+    class_schedule을 office와 동일하게 차단한다. 2026-07-13 임계값 0.5 전환 시 real
+    holdout FP 분해 결과 exam→class·assignment→class 누출이 0이라 활성화하지 않음
+    (FP 9는 전부 gold=unknown; scripts/23_fp_breakdown.py). **활성화 트리거**: real
+    holdout에서 exam→class 또는 assignment→class 오탐이 관찰되면 그때 기본 ON으로.
     """
     rejection: Optional[dict] = None
 
