@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import random
+import re
 from typing import Optional
 
 from ..common.schema import Label, include_in_class_schedule
@@ -37,8 +38,14 @@ _UNKNOWN = ["교재: 자료구조 3판", "선수과목 없음", "학점 3", "이
             "강의실 공학관 301", "총 16주", "Prerequisites: none"]
 
 
+_EN_FULL = {"Mon": "Monday", "Tue": "Tuesday", "Wed": "Wednesday", "Thu": "Thursday", "Fri": "Friday"}
+_START_TIMES = ["09:00", "10:00", "13:00", "14:00", "15:30", "18:00", "18:30", "19:00"]
+
+
 def _time_expr(rng: random.Random) -> str:
-    style = rng.randint(0, 3)
+    """수업시간 표면형 — 모델이 놓치던 다양한 형태를 넓게 커버 (recall 목적).
+    단일 시작시각(월 18:00)은 강의시간 필드 맥락에서만 정당하므로 _one에서 그 라벨과 함께 쓴다."""
+    style = rng.randint(0, 7)
     if style == 0:
         return f"{rng.choice(_KO_DAYS)} {rng.choice(_TIMES)}"
     if style == 1:
@@ -46,6 +53,17 @@ def _time_expr(rng: random.Random) -> str:
         return f"{d1}/{d2} {rng.choice(_TIMES)}"
     if style == 2:
         return f"{rng.choice(_KO_DAYS)}{rng.choice(_PERIODS)}교시"
+    if style == 3:
+        d = rng.choice(_EN_DAYS)
+        return f"{_EN_FULL[d]} {rng.choice(_TIMES)}"
+    if style == 4:                                   # 요일 나열 + 시각범위 (월,수 …)
+        d1, d2 = rng.sample(_KO_DAYS, 2)
+        return f"{d1},{d2} {rng.choice(_TIMES)}"
+    if style == 5:                                   # 요일 범위 (월~수)
+        i = rng.randint(0, 2)
+        return f"{_KO_DAYS[i]}~{_KO_DAYS[i+2]} {rng.choice(_TIMES)}"
+    if style == 6:                                   # 단일 시작시각 (강의시간 필드에서만)
+        return f"{rng.choice(_KO_DAYS)} {rng.choice(_START_TIMES)}"
     return f"{rng.choice(_EN_DAYS)} {rng.choice(_TIMES)}"
 
 
@@ -71,8 +89,12 @@ def _row(candidate: str, *, label: Label, date_kind: str,
 
 def _one(label: Label, rng: random.Random, idx: int) -> dict:
     if label == Label.CLASS_SCHEDULE:
-        return _row(_time_expr(rng), label=label, date_kind="recurring",
-                    row_label=rng.choice(_CLASS_LABELS), idx=idx)
+        expr = _time_expr(rng)
+        # 단일 시작시각은 강의시간 필드 라벨과 함께여야 정당 (validator Rule 4와 일치)
+        single_start = bool(re.match(r"[월화수목금] \d{2}:\d{2}$", expr))
+        row_label = rng.choice(_CLASS_LABELS) if single_start else rng.choice(_CLASS_LABELS + [None, None])
+        return _row(expr, label=label, date_kind="recurring",
+                    row_label=row_label or "강의시간", idx=idx)
     if label == Label.EXAM_TIME:
         cue = rng.choice(_EXAM_CUES)
         when = rng.choice(_DATES) if rng.random() < 0.6 else f"{rng.randint(1,15)}주차"
@@ -105,16 +127,19 @@ def _one(label: Label, rng: random.Random, idx: int) -> dict:
     return _row(rng.choice(_UNKNOWN), label=Label.UNKNOWN, date_kind="uncertain", idx=idx)
 
 
-# 생성 비중 — 희소 클래스에 가중 (재균형 목적)
+# 생성 비중 (2026-07-13 재조정 — v2). 1차 레시피는 대조 클래스(exam/office/policy)를
+# class_schedule보다 6배 많이 넣어 모델을 보수화 → recall이 0.490→0.438로 하락했다.
+# recall을 올리려면 놓치는 진짜 수업(class_schedule)의 다양한 표면형을 지배적으로 넣고,
+# 대조 클래스는 경계 유지에 필요한 만큼만 남긴다. (검증은 다음 Colab 재학습.)
 DEFAULT_MIX: dict[Label, int] = {
-    Label.EXAM_TIME: 5,
-    Label.ASSIGNMENT_DEADLINE: 4,
-    Label.INSTRUCTOR_OFFICE_HOURS: 4,
-    Label.TA_OFFICE_HOURS: 4,
-    Label.POLICY_TEXT: 5,
-    Label.CLASS_SCHEDULE: 3,          # 어려운 표면형 보강
+    Label.CLASS_SCHEDULE: 8,          # 지배적 — 8종 표면형(교시·범위·단일시작·요일범위·영문…)
+    Label.EXAM_TIME: 3,
+    Label.ASSIGNMENT_DEADLINE: 2,
+    Label.INSTRUCTOR_OFFICE_HOURS: 2,
+    Label.TA_OFFICE_HOURS: 2,
+    Label.POLICY_TEXT: 2,
     Label.WEEKLY_PLAN: 1,
-    Label.UNKNOWN: 2,                 # 대조군
+    Label.UNKNOWN: 2,                 # 대조군(시간처럼 생겼지만 수업 아님)
 }
 
 

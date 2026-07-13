@@ -32,11 +32,8 @@ def load_doc(path: str) -> NormalizedDoc:
 
 
 def build_classifier(model: str, threshold: float):
-    if model == "heuristic":
-        from syllabus_classifier.model import HeuristicClassifier
-        return HeuristicClassifier()
-    from syllabus_classifier.model import EncoderClassifier
-    return EncoderClassifier(model, threshold=threshold)
+    from syllabus_classifier.model import load_classifier
+    return load_classifier(model, threshold=threshold)
 
 
 def main() -> int:

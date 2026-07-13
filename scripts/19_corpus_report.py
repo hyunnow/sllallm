@@ -54,7 +54,12 @@ LIST_FIELDS = [
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--model", default="heuristic",
+                    help="'heuristic'(기본) 또는 학습 체크포인트 경로 (예: checkpoints/encoder/best)")
     args = ap.parse_args()
+
+    from syllabus_classifier.model import load_classifier
+    clf = load_classifier(args.model)
 
     norm_dir = resolve_path(load_config("data.yaml")["paths"]["normalized_dir"])
     files = sorted(norm_dir.glob("*.json"))
@@ -82,7 +87,7 @@ def main() -> int:
             ocr_backlog.append(f"{doc.doc_id}  [{doc.extraction_quality}, {text_len}자]")
             continue
         n += 1
-        record = build_record(doc, route_document(doc))
+        record = build_record(doc, route_document(doc, classifier=clf))
         resolve_record_dates(record, kb=kb)
         for label, getter in SCALAR_FIELDS:
             if getter(record) not in (None, ""):

@@ -58,7 +58,12 @@ def main() -> int:
     ap.add_argument("--batch", type=int, help="gold 배치 문서 사용 (drafts_batchN 매핑)")
     ap.add_argument("--ics", type=int, default=0, help="앞 N개 문서의 ICS 저장")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--model", default="heuristic",
+                    help="'heuristic'(기본) 또는 학습 체크포인트 경로")
     args = ap.parse_args()
+
+    from syllabus_classifier.model import load_classifier
+    clf = load_classifier(args.model)
 
     norm_dir = resolve_path(load_config("data.yaml")["paths"]["normalized_dir"])
     if args.batch:
@@ -83,7 +88,7 @@ def main() -> int:
 
     for fp in files:
         doc = NormalizedDoc.from_dict(json.loads(fp.read_text(encoding="utf-8")))
-        record = build_record(doc, route_document(doc))
+        record = build_record(doc, route_document(doc, classifier=clf))
         out = compile_record(record, kb=kb)
         stats["docs"] += 1
         stats["confirmed"] += out["stats"]["confirmed"]
