@@ -195,6 +195,16 @@ def normalize_pdf(path: str, doc_id: str) -> NormalizedDoc:
                              extraction_quality="needs_ocr",
                              notes=[f"no text layer ({total_chars} chars / {npages} pages); OCR unavailable here"])
 
+    # chrome-only 레이어(URL·페이지머리글뿐, B6-001)는 글자 수가 문턱을 넘어도
+    # 실질 내용이 없으니 needs_ocr — 텍스트 있는 스캔본을 놓치지 않는다 (§2 ④)
+    from .ocr_backlog import is_low_content
+
+    if is_low_content(all_text, npages):
+        return NormalizedDoc(doc_id=doc_id, pages=pages, source_format="pdf_scan",
+                             extraction_quality="needs_ocr",
+                             notes=[f"low substantive content ({total_chars} raw chars are "
+                                    "mostly chrome/URLs); needs OCR"])
+
     quality = "ok" if total_chars / npages >= 100 else "low"
     return NormalizedDoc(doc_id=doc_id, pages=pages, source_format="pdf_text", extraction_quality=quality)
 

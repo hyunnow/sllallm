@@ -417,3 +417,17 @@ def test_b7_040_chasi_header_is_week_table():
     sub = extract_subsystem(doc_from("", tables=[t]))
     assert sub["schedule.total_weeks"] == 8
     assert any(e["raw_reference"] == "Week 8" for e in sub["schedule.exams"])
+
+
+# --- B6-001: chrome-only 텍스트 레이어는 needs_ocr (④ OCR 백로그) --------------
+
+def test_b6_001_chrome_only_text_is_low_content():
+    from syllabus_classifier.extract.ocr_backlog import is_low_content, substantive_text
+    # 한양대 LMS 인쇄 PDF: 글자는 있지만 전부 URL·페이지머리글·날짜
+    chrome = ("Page 1 of 4\nhttps://portal.hanyang.ac.kr/lms/lms/class/coursePlan/"
+              "doListViewEn.do?language=en&... 2/16/2017\nPage 2 of 4\nPage 3 of 4\n")
+    assert len(substantive_text(chrome)) < 30
+    assert is_low_content(chrome, npages=4)
+    # 실제 내용이 있으면 통과
+    real = "자료구조 강의계획서 이 과목은 배열 리스트 스택 큐 트리를 다룬다 " * 3
+    assert not is_low_content(real, npages=1)
