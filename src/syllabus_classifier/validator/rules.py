@@ -23,6 +23,12 @@ _OFFICE_CUES = [
     "면담", "상담", "office hour", "office hours", "office location", "오피스아워",
     "appointment", "webex", "연구실 및 면담", "consultation",
 ]
+# 시험/과제 문맥 — office와 같은 원리로, 이 문맥의 시간은 정규 수업이 아니다
+# (중간고사 시각·과제 마감이 주간 수업으로 새면 캘린더에 가짜 수업이 생긴다).
+# 임계값을 낮출 때(0.5) exam/assignment→class 누출을 막는 결정론 방어층.
+_EXAM_CUES = ["중간고사", "기말고사", "시험", "고사", "exam", "midterm", "final exam", "퀴즈", "quiz"]
+_ASSIGN_CUES = ["과제", "제출", "마감", "deadline", "assignment", "homework", "숙제",
+                "레포트", "리포트", "제출기한"]
 _DURATION_RE = re.compile(r"^\s*\d+\s*분(?:간)?\s*$")
 _WEEK_ONLY_RE = re.compile(r"\d+\s*주차|week\s*\d+", re.IGNORECASE)
 _HAS_CLOCK_RE = re.compile(r"\d{1,2}:\d{2}|\d{1,2}\s*시|교시")
@@ -47,18 +53,33 @@ def has_office_hours_context(candidate: TimeCandidate) -> bool:
     return any(cue.lower() in blob for cue in _OFFICE_CUES)
 
 
+def has_exam_context(candidate: TimeCandidate) -> bool:
+    blob = (candidate.context_blob() + " " + (candidate.candidate_text or "")).lower()
+    return any(cue.lower() in blob for cue in _EXAM_CUES)
+
+
+def has_assignment_context(candidate: TimeCandidate) -> bool:
+    blob = (candidate.context_blob() + " " + (candidate.candidate_text or "")).lower()
+    return any(cue.lower() in blob for cue in _ASSIGN_CUES)
+
+
 def is_duration(text: str) -> bool:
     """`50분간` / `90분` — a length, never a start/end time (spec Phase 9)."""
     return bool(_DURATION_RE.match(text or ""))
 
 
 def validate_candidate(
-    candidate: TimeCandidate, classification: Classification
+    candidate: TimeCandidate, classification: Classification,
+    *, block_events: bool = False,
 ) -> tuple[Classification, Optional[dict]]:
     """Apply the safety-net rules to one (candidate, classification) pair.
 
     Returns the possibly-corrected classification and, if the candidate was
     rejected from class_schedule, a rejection record for audit.
+
+    block_events (기본 OFF — 증거 확인 전 파이프라인 동작 불변): True면 exam/assignment
+    문맥의 class_schedule을 office와 동일하게 차단한다. 임계값 0.5 전환 시 FP 분해
+    증거를 보고 켠다 (scripts/23_fp_breakdown.py).
     """
     rejection: Optional[dict] = None
 
@@ -84,6 +105,18 @@ def validate_candidate(
             return reject("Office-hours context near candidate.", new), rejection
         # already non-class; leave as-is
         return classification, None
+
+    # Rule 1b (optional, block_events): exam/assignment context → never class.
+    # 명시적 수업시간 필드(강의시간/Class Time) 안이면 예외 — 그 칸의 시간은 진짜
+    # 수업이다(시험 언급이 근처에 있어도). office 차단과 달리 이 예외를 두는 이유는
+    # 시험/과제 cue가 문서 곳곳에 흩어져 정규 수업 시간까지 오차단할 위험 때문.
+    if (block_events
+            and classification.classified_as == Label.CLASS_SCHEDULE.value
+            and not _in_class_field(candidate)):
+        if has_exam_context(candidate):
+            return reject("Exam context near candidate.", Label.EXAM_TIME), rejection
+        if has_assignment_context(candidate):
+            return reject("Assignment context near candidate.", Label.ASSIGNMENT_DEADLINE), rejection
 
     # Rule 2: a duration is not a time-of-day event.
     if is_duration(candidate.candidate_text):

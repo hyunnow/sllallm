@@ -460,3 +460,43 @@ def test_instructor_strips_label_prefix_and_inline_email():
     assert _clean_instructor(f"Bo-Hae Im (임보해, bhim{at}kaist.ac.kr)") == "Bo-Hae Im (임보해)"
     # 괄호가 이메일뿐이면 껍데기째 제거 (B3-020)
     assert _clean_instructor(f"Yong-Jung Kim (yongkim{at}kaist.ac.kr)") == "Yong-Jung Kim"
+
+
+# --- 임계값 0.5 전환: exam/assignment validator 차단 (기본 OFF, 증거 후 ON) --------
+
+def _cand(text, row_label=None, section=None, before=""):
+    from syllabus_classifier.common.schema import TimeCandidate
+    return TimeCandidate(candidate_text=text, section_title=section, table_row_label=row_label,
+                         table_col_label=None, nearby_text_before=before, nearby_text_after="",
+                         date_kind="absolute")
+
+
+def _cls(label="class_schedule", conf=0.6):
+    from syllabus_classifier.common.schema import Classification, include_in_class_schedule
+    return Classification(classified_as=label, include_in_class_schedule=include_in_class_schedule(label),
+                          confidence=conf)
+
+
+def test_block_events_off_by_default_no_behavior_change():
+    from syllabus_classifier.validator.rules import validate_candidate
+    c = _cand("Mon 10:00-11:50", before="중간고사 안내")
+    out, _ = validate_candidate(c, _cls())          # 기본 OFF
+    assert out.classified_as == "class_schedule"    # 현재 동작 불변
+
+
+def test_block_events_on_blocks_exam_and_assignment_context():
+    from syllabus_classifier.validator.rules import validate_candidate
+    exam = _cand("Mon 10:00-11:50", row_label="중간고사")
+    out, rej = validate_candidate(exam, _cls(), block_events=True)
+    assert out.classified_as == "exam_time" and rej is not None
+    asg = _cand("Fri 23:59", row_label="과제 제출")
+    out2, _ = validate_candidate(asg, _cls(), block_events=True)
+    assert out2.classified_as == "assignment_deadline"
+
+
+def test_block_events_exempts_explicit_class_time_field():
+    # 강의시간 칸의 시간은 근처에 시험 언급이 있어도 진짜 수업 — 오차단 방지
+    from syllabus_classifier.validator.rules import validate_candidate
+    c = _cand("Mon 10:00-11:50", row_label="강의시간", before="중간고사는 8주차")
+    out, _ = validate_candidate(c, _cls(), block_events=True)
+    assert out.classified_as == "class_schedule"
