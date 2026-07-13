@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "syllabus-classifier"
-version = "0.0.1"
+version = "0.1.0"
 description = "Syllabus time-candidate classifier — keep office hours, exams, and deadlines out of class_schedule."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -45,6 +45,11 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Runtime KBs ship inside the package so they resolve after a plain pip install
+# (no repo checkout). See common/config.py for the resolution order.
+[tool.setuptools.package-data]
+syllabus_classifier = ["config/*.yaml"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

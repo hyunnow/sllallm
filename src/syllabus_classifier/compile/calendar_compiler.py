@@ -80,8 +80,11 @@ def _class_exdates(cal: dict, weekday: str, first: date, until: date) -> list[st
     return out
 
 
-def _review(summary: str, reason: str, **extra) -> dict:
-    return {"summary": summary, "status": "needs_review", "review_reason": reason, **extra}
+def _review(summary: str, reason: str, *, kind: str = "class", **extra) -> dict:
+    # kind (class|exam|assignment|office_hours) lets host apps route events
+    # without re-deriving type from the summary. Defaults to class (the 수업 block).
+    return {"summary": summary, "kind": kind, "status": "needs_review",
+            "review_reason": reason, **extra}
 
 
 def compile_record(record: dict, kb: Optional[KBResolver] = None,
@@ -135,8 +138,8 @@ def compile_record(record: dict, kb: Optional[KBResolver] = None,
                                   raw_time=raw_time))
         else:
             for day, start, end in slots:
-                timetable.append({"summary": f"{title} (수업)", "day": day,
-                                  "start_time": start, "end_time": end})
+                timetable.append({"summary": f"{title} (수업)", "kind": "class",
+                                  "day": day, "start_time": start, "end_time": end})
             if cal_ok:
                 term_start = date.fromisoformat(cal["term_start"])
                 term_end = date.fromisoformat(cal["term_end"]) if cal.get("term_end") \
@@ -145,6 +148,7 @@ def compile_record(record: dict, kb: Optional[KBResolver] = None,
                     first = _first_on_or_after(term_start, day)
                     confirmed.append({
                         "summary": f"{title} (수업)",
+                        "kind": "class",
                         "dtstart": f"{first.isoformat()}T{start}",
                         "dtend": f"{first.isoformat()}T{end}",
                         "rrule": f"FREQ=WEEKLY;BYDAY={_BYDAY[day]};"
@@ -164,6 +168,7 @@ def compile_record(record: dict, kb: Optional[KBResolver] = None,
         for inst in record.get("instructors", []):
             for oh in inst.get("office_hours") or []:
                 review.append(_review(f"{title} (면담)", "면담시간은 확정 캘린더 비대상 (옵션 카테고리)",
+                                      kind="office_hours",
                                       raw=oh.get("raw") if isinstance(oh, dict) else str(oh)))
 
     # 연도 sanity 기준: 학년도 > 문서 내 지배 연도. 학년도가 없어도(bare 날짜뿐인
@@ -180,53 +185,54 @@ def compile_record(record: dict, kb: Optional[KBResolver] = None,
     doc_year = meta.get("academic_year") or (int(_yrs.most_common(1)[0][0]) if _yrs else None)
 
     # --- 시험 / 과제 (단일) -------------------------------------------------
-    for kind, label in (("exams", "시험"), ("assignments", "과제")):
-        for e in record.get("schedule", {}).get(kind, []):
+    for bucket, label in (("exams", "시험"), ("assignments", "과제")):
+        ev_kind = "exam" if bucket == "exams" else "assignment"
+        for e in record.get("schedule", {}).get(bucket, []):
             orig_title = e.get("title") or ""
             # 주차/요일 마커 제목 = 주차 일정 행 오추출 → 실제 이벤트 아님, 날짜 확정 금지
             if _WEEK_MARKER_TITLE.match(orig_title):
                 review.append(_review(f"{title} ({label})",
                                       "주차 일정 행이 시험/과제로 오추출 (실제 이벤트 아님)",
-                                      raw_reference=e.get("raw_reference")))
+                                      kind=ev_kind, raw_reference=e.get("raw_reference")))
                 continue
             summary = orig_title or f"{title} ({label})"
             if _LABELISH_TITLE.match(summary):
                 summary = f"{title} ({label})"
             if e.get("date_kind") == "recurring":
                 review.append(_review(summary, "반복 마감 — 확정 컴파일 미지원(확인 필요)",
-                                      raw_reference=e.get("raw_reference")))
+                                      kind=ev_kind, raw_reference=e.get("raw_reference")))
                 continue
             rd = e.get("resolved_date")
             if _NON_EVENT_TITLE.search(summary):
                 review.append(_review(summary, "문서 메타데이터/인용 날짜 의심 — 일정 아님",
-                                      raw_reference=e.get("raw_reference")))
+                                      kind=ev_kind, raw_reference=e.get("raw_reference")))
                 continue
             if rd and doc_year and abs(int(str(rd)[:4]) - int(doc_year)) > 1:
                 ref = "학년도" if meta.get("academic_year") else "문서 지배연도"
                 review.append(_review(summary, f"{ref}({doc_year})와 동떨어진 연도({str(rd)[:4]}) — "
                                                "오타/인용/과거 날짜 의심",
-                                      raw_reference=e.get("raw_reference")))
+                                      kind=ev_kind, raw_reference=e.get("raw_reference")))
                 continue
             if rd and current_year and int(str(rd)[:4]) < current_year:
                 review.append(_review(summary, f"과거 학기({str(rd)[:4]}) — 현재/다가올 학기 아님",
-                                      raw_reference=e.get("raw_reference")))
+                                      kind=ev_kind, raw_reference=e.get("raw_reference")))
                 continue
             if rd and not e.get("needs_review"):
                 confirmed.append({
-                    "summary": summary, "dtstart": rd, "all_day": True,
+                    "summary": summary, "kind": ev_kind, "dtstart": rd, "all_day": True,
                     "status": "confirmed", "resolved_by": e.get("resolved_by"),
                 })
             elif e.get("resolved_week_start"):
                 review.append(_review(
                     summary,
                     f"주-범위만 확정({e['resolved_week_start']}~{e.get('resolved_week_end')}) — "
-                    "단일 날짜 근거 없음", raw_reference=e.get("raw_reference")))
+                    "단일 날짜 근거 없음", kind=ev_kind, raw_reference=e.get("raw_reference")))
             else:
                 review.append(_review(
                     summary,
                     e.get("review_reason") or
                     ("휴강일 충돌" if e.get("needs_review") and rd else "날짜 근거 없음(raw 유지)"),
-                    raw_reference=e.get("raw_reference"), date_kind=e.get("date_kind")))
+                    kind=ev_kind, raw_reference=e.get("raw_reference"), date_kind=e.get("date_kind")))
 
     return {
         "course": {"title": title, "school": meta.get("school"),
