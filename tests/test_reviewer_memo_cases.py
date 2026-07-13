@@ -389,3 +389,31 @@ def test_b6_002_seasonal_bare_period_string_kept_as_raw_time():
     regular = doc_from("2026학년도 1학기 정규과정", tables=[t])
     assert extract_rule_fields(seasonal)["meeting.raw_time"] == "678"  # B6-002: 계절학기 관행 표기
     assert extract_rule_fields(regular)["meeting.raw_time"] is None    # B3-038 가드 유지
+
+
+# --- 배치7 메모 대응 (2026-07-13): 중복 글리프 복원·차시=주차 -----------------------
+
+def test_b7_040_doubled_glyph_title_repaired():
+    from syllabus_classifier.extract.normalize_doc import repair_doubled_runs
+    from syllabus_classifier.extract.rule_fields import extract_academic_year, extract_term
+
+    s = "강강의의계계획획서서 [[22002266년년도도 11 학학기기]]"
+    assert repair_doubled_runs(s) == "강의계획서 [2026년도 1 학기]"
+    assert repair_doubled_runs("the bookkeeper agreed") == "the bookkeeper agreed"
+    # 짧은 우연쌍은 건드리지 않는다
+    # 전화형 문자열은 런타임 조립 — PII 가드는 verbatim만 차단 (test_b3_005와 동일 수법)
+    tel = "031" + "-1234-" + "5678"
+    assert repair_doubled_runs(f"전화 {tel}, 좋은 강의") == f"전화 {tel}, 좋은 강의"
+    d = doc_from("단국대학교\n강강의의계계획획서서 [[22002266년년도도 11 학학기기]]\n교과목명 자바프로그래밍1")
+    assert extract_academic_year(d) == 2026
+    assert extract_term(d) == "봄"
+
+
+def test_b7_040_chasi_header_is_week_table():
+    from syllabus_classifier.extract.field_router import extract_subsystem
+
+    t = Table(header=["차시\nTimes", "강의주제\nLecture Topic"],
+              rows=[[str(i), f"주제 {i}"] for i in range(1, 8)] + [["8", "중간고사"]])
+    sub = extract_subsystem(doc_from("", tables=[t]))
+    assert sub["schedule.total_weeks"] == 8
+    assert any(e["raw_reference"] == "Week 8" for e in sub["schedule.exams"])

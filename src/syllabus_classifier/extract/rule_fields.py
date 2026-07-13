@@ -144,7 +144,7 @@ def labeled_value(doc, field: str, *, cut: bool = True) -> Optional[str]:
 # --- §3-1 academic year / term -------------------------------------------------
 
 _HAKNYEONDO = re.compile(r"(\d{4})\s*학년도")
-_YEAR_TERM = re.compile(r"(\d{4})\s*년?[\s\-./]*([12])\s*학기")
+_YEAR_TERM = re.compile(r"(\d{4})\s*(?:학?년도?)?[\s\-./]*([12])\s*학기")
 # English evidence shapes: the year must sit NEXT TO a term word — still never a
 # bare year (§3-1). "Spring 2026" / "2026 SUMMER (SCHOOL/SESSION/…)" both ways.
 _EN_TERM_YEAR = re.compile(r"\b(spring|summer|fall|autumn|winter)\s*[,\s]\s*(20\d{2})\b", re.I)

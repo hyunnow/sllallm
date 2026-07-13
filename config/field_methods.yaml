@@ -1,27 +1,29 @@
-# Per-field winning method (v4 §2, §4). Values here are the INITIAL hypotheses
+# Per-field winning method (v4 §2, §4). 2026-07-13: gold 표기 규칙 동결 선언 후
+# 배치2~7(233 docs) dev/holdout(§4-3)로 확정 — 근거는 data/gold/field_winners.json.
+# 아래 '확정' 주석이 없는 항목은 아직 측정 전 가설이다. Values here are the INITIAL hypotheses
 # from the spec's table; the method harness (§4) confirms or overturns each one
 # with data, and this file is then updated to the measured winner.
 #
 # Methods: rule | rule_llm | llm | classifier_kb | rule_classifier_kb
 fields:
   # meta — short structured values
-  school: rule_llm
+  school: rule                 # 확정 2026-07-13: holdout 98%cov/97%prec/0%fab (본문>이메일>파일명)
   campus: rule_llm
   department: rule_llm
   academic_year: rule          # with print-date exclusion (§3-1)
   term: rule
-  course_code: rule_llm
+  course_code: rule            # 확정 2026-07-13: holdout 76/91/0
 
   # course
-  title_ko: rule_llm
-  title_en: rule_llm
+  title_ko: rule               # 확정 2026-07-13: holdout 58/67/0 (과목명)
+  title_en: rule
   credits: rule
   classification: rule_llm
   target_students: rule_llm
   keywords: llm
 
   # people
-  instructor_name: rule_llm
+  instructor_name: rule        # 확정 2026-07-13: holdout 36/69/0 — 커버리지 확장 여지
   email: rule                  # regex is near-perfect (+ de-obfuscation)
   phone: rule
   office: rule_llm
@@ -29,7 +31,7 @@ fields:
   bio: llm
 
   # meeting
-  location: rule_llm
+  location: rule               # 확정 2026-07-13: holdout 27/44/12 — 최약 필드, 개선 대상
   class_time: rule_classifier_kb     # 교시→시각 is KB-only (§3-3)
 
   # free text — LLM with section-scoped prompts
@@ -42,9 +44,9 @@ fields:
   textbooks: llm
 
   # schedule
-  weekly_plan: rule_llm        # rule table detect + LLM cell cleanup (§3-7)
-  exams: classifier_kb         # LLM alone hallucinates dates (§3-4)
-  assignments: classifier_kb
+  weekly_plan: rule            # 확정 2026-07-13: 표+날짜합성+산문 (holdout 64%cov, week-level 61~73%; 산문형 잔여는 LLM 후보)
+  exams: rule                  # 확정 2026-07-13: 위험가중 승자 = rule 표+게이트 (fab 0%; hybrid는 fab>0이라 자동채움 탈락, 검토 큐 후보로만)
+  assignments: rule            # 확정 2026-07-13: 동상 (무기한과제만 hybrid 유일 공급 — 품질 잠정)
 
   # admin
   attendance_policy: llm

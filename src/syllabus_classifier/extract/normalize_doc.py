@@ -30,6 +30,35 @@ _SCAN_CHARS_PER_PAGE = 30
 _HWP5TXT = shutil.which("hwp5txt") or str(Path.home() / "Library/Python/3.9/bin/hwp5txt")
 
 
+def repair_doubled_runs(text: str) -> str:
+    """볼드 오버프린트가 글자를 2배로 뽑는 PDF 제목 줄을 복원한다 (B7-040:
+    '강강의의계계획획서서 [[22002266년년도도 11 학학기기]]' → '강의계획서 [2026년도 1 학기]').
+    판정은 줄 단위: 글자의 60% 이상이 연속쌍인 줄만 전체 쌍을 접는다 — 정상
+    문장('bookkeeper', '031-8005')은 쌍 비율이 낮아 건드리지 않는다."""
+    if not text:
+        return text
+    out = []
+    for line in text.split("\n"):
+        n = len(line)
+        paired = i = 0
+        while i + 1 < n:
+            if line[i] == line[i + 1]:
+                paired += 2
+                i += 2
+            else:
+                i += 1
+        if n >= 8 and paired / n > 0.6:
+            res = []
+            i = 0
+            while i < n:
+                res.append(line[i])
+                i += 2 if (i + 1 < n and line[i] == line[i + 1]) else 1
+            out.append("".join(res))
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
 @dataclass
 class Table:
     header: list[str] = field(default_factory=list)   # column labels (first row)
@@ -71,7 +100,7 @@ class NormalizedDoc:
 
     @property
     def full_text(self) -> str:
-        return "\n".join(p.text for p in self.pages)
+        return "\n".join(repair_doubled_runs(p.text) for p in self.pages)
 
     def to_dict(self) -> dict:
         return {

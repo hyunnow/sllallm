@@ -20,7 +20,9 @@ from typing import Optional
 
 from ..normalize import normalize_date
 
-_WEEK_H = re.compile(r"^\s*(?:주\s*차?|week|wk|제?\s*\d*\s*주)\s*$", re.I)
+# 차시/회차 헤더도 주차 표다 — 주 1회 수업의 N회차=N주차 (B7-040 gold: 8회차
+# 중간고사 → Week 8). 학기 길이를 넘는 회차(>16)는 alignment 가드가 걸러낸다.
+_WEEK_H = re.compile(r"^\s*(?:주\s*차?|week|wk|제?\s*\d*\s*주|차\s*시(?:\s*\(?times?\)?)?|회\s*차)\s*(?:\n.*)?$", re.I)
 _DATE_H = re.compile(r"기간|날짜|일자|date|일정", re.I)
 # topic column selection is TIERED (batch-2 gold evidence: reviewers take the
 # short 주제/제목 column, not the long 학습목표/상세내용 one — B2-001/010/013):
