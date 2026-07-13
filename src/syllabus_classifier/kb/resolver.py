@@ -63,6 +63,37 @@ class ResolvedDate:
         }
 
 
+def _validate_timetables(tt: dict) -> None:
+    """v3 §5-3 로드 시 스키마 검증: 교시 슬롯은 [start,end] 2-튜플이고 start<end."""
+    for key, table in (tt or {}).items():
+        for p, slot in ((table or {}).get("periods") or {}).items():
+            if not (isinstance(slot, (list, tuple)) and len(slot) == 2):
+                raise ValueError(f"period_timetables '{key}' 교시 {p}: [시작,끝] 형식이 아님: {slot!r}")
+            s, e = _norm_hhmm(slot[0]), _norm_hhmm(slot[1])
+            if s >= e:
+                raise ValueError(f"period_timetables '{key}' 교시 {p}: 시작({s}) >= 끝({e})")
+
+
+def _validate_calendars(cals: dict) -> None:
+    """v3 §5-3: 날짜 필드는 ISO여야 한다 (문자열/date 객체 모두 str() 후 검사)."""
+    from datetime import date as _d
+
+    for key, cal in (cals or {}).items():
+        for f in ("term_start", "term_end"):
+            v = (cal or {}).get(f)
+            if v:
+                try:
+                    _d.fromisoformat(str(v))
+                except ValueError as exc:
+                    raise ValueError(f"academic_calendars '{key}' {f}={v!r}: ISO 날짜 아님") from exc
+        for group in ("holidays", "school_holidays"):
+            for h in (cal or {}).get(group) or []:
+                try:
+                    _d.fromisoformat(str(h))
+                except ValueError as exc:
+                    raise ValueError(f"academic_calendars '{key}' {group} {h!r}: ISO 날짜 아님") from exc
+
+
 class KBResolver:
     """Loads both KBs once and exposes the resolvers. Pass explicit dicts in
     tests to avoid touching config files."""
@@ -74,6 +105,9 @@ class KBResolver:
         self._calendars = calendars if calendars is not None else load_config(
             "academic_calendars.yaml"
         ).get("calendars", {})
+        # v3 §5-3: 잘못된 KB는 조용히 오답을 만들지 말고 로드에서 크게 실패한다
+        _validate_timetables(self._timetables)
+        _validate_calendars(self._calendars)
 
     # --- period -> clock time ---------------------------------------------
     def resolve_period(self, school: str, term_type: str, period_numbers: list[int]) -> ResolvedTime:

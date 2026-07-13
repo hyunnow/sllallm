@@ -194,6 +194,9 @@ def _dated_entry(cand, extra: dict) -> dict:
         "date_kind": cand.date_kind,
         "raw_reference": cand.candidate_text,
         "resolved_date": resolved,
+        # 문서 텍스트에서 정규화한 절대 날짜의 출처 스탬프 — 컴파일러의 "근거 없는
+        # 확정" 가드가 이 표기를 요구한다 (v3 §9; 전 코퍼스 스모크에서 미표기 19건)
+        "resolved_by": "in_document" if resolved else None,
         "needs_review": resolved is None,
     }
     entry.update(extra)
