@@ -61,3 +61,6 @@ b-3/
 b-4/
 b-[0-9]*/
 b-[0-9]*.zip
+
+# GwaTop port execution plan — local only (contains private infra details; repo is public)
+GWATOP_PORT_PLAN.md
