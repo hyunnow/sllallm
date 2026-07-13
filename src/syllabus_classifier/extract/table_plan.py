@@ -63,6 +63,7 @@ class PlanRow:
     textbook_range: Optional[str] = None
     remarks: Optional[str] = None
     extras: Optional[list] = None      # 비지정 열의 줄 단위 텍스트 (챕터·시험 단서 — B4-035/037)
+    date_labeled: bool = False         # 날짜에서 합성한 주차 — 직렬화에 `Week N (날짜):` (정책 A)
 
 
 @dataclass
@@ -129,6 +130,204 @@ def _numeric_first_col(rows: list) -> Optional[dict]:
             cmap["date"] = i
             break
     return cmap
+
+
+# --- 날짜/세션 기반 표 → 주차 부여 (정책 A, 2026-07-13 사용자 위임 결정) ----------
+# 주차 열 없이 세션 날짜만 있는 표(B6-019/020)는 날짜를 달력 주(월요일 시작)로 묶어
+# `Week N (날짜): 내용1 / 내용2` 로 직렬화한다. 연도는 그룹 경계 계산에만 쓰며
+# (출력은 원문 날짜 그대로), 학년도를 모르면 주 경계를 확정할 수 없어 abstain.
+
+_MONTHS = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+           "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
+_EN_DATE = re.compile(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*(\d{1,2})\b", re.I)
+_NUM_DATE = re.compile(r"(?:(\d{4})\s*[./\-])?\s*(\d{1,2})\s*[./\-]\s*(\d{1,2})\b")
+_KO_DATE = re.compile(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일")
+
+
+def _first_md(cell: str):
+    """셀의 첫 날짜를 (month, day)로 — 형식: Sep 2 / 3/11 / 2026-03-11 / 3월 11일."""
+    s = cell or ""
+    m = _EN_DATE.search(s)
+    if m:
+        return _MONTHS[m.group(1).lower()[:3]], int(m.group(2))
+    m = _KO_DATE.search(s)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    m = _NUM_DATE.search(s)
+    if m:
+        mo, d = int(m.group(2)), int(m.group(3))
+        if 1 <= mo <= 12 and 1 <= d <= 31:
+            return mo, d
+    return None
+
+
+def _date_entries_from_table(table, year: int, first_month_ref: list) -> list:
+    """표 하나에서 (월요일 서수, 원문 날짜, topic, extras) 엔트리 추출.
+    first_month_ref는 문서 전체의 첫 달(해 넘김 판정용) — 표 간 공유."""
+    data = list(table.rows or [])
+    if not data:
+        return []
+    width = max((len(r) for r in data), default=0)
+    if width < 2:
+        return []
+    best_col, best_hits = None, 0
+    for i in range(width):
+        nonempty = [(r[i] or "") for r in data if i < len(r) and (r[i] or "").strip()]
+        hits = sum(1 for c in nonempty if _first_md(c))
+        if nonempty and hits >= max(2, int(0.6 * len(nonempty))) and hits > best_hits:
+            best_col, best_hits = i, hits
+    if best_col is None:
+        return []
+    dens = [0] * width
+    for r in data:
+        for i in range(min(width, len(r))):
+            if i != best_col:
+                dens[i] += len((r[i] or "").strip())
+    if not max(dens):
+        return []
+    topic_col = min(i for i in range(width) if dens[i] >= 0.5 * max(dens))
+
+    import datetime as _dt
+    entries = []
+    for r in data:
+        cell = (r[best_col] or "") if best_col < len(r) else ""
+        md = _first_md(cell)
+        if not md:
+            continue
+        mo, day = md
+        if not first_month_ref:
+            first_month_ref.append(mo)
+        y = year + 1 if mo < first_month_ref[0] - 6 else year   # 학기가 해를 넘는 경우
+        try:
+            d = _dt.date(y, mo, day)
+        except ValueError:
+            continue
+        topic = re.sub(r"\s+", " ", (r[topic_col] or "")).strip() if topic_col < len(r) else ""
+        extras = []
+        for i, c in enumerate(r):
+            if i in (best_col, topic_col) or not (c or "").strip():
+                continue
+            extras.extend(ln for ln in (re.sub(r"\s+", " ", x).strip() for x in c.splitlines()) if ln)
+        entries.append((d.toordinal() - d.weekday(), re.sub(r"\s+", " ", cell).strip(), topic, extras))
+    return entries
+
+
+def _plan_rows_from_entries(entries: list) -> list[PlanRow]:
+    """(월요일 서수, 원문 날짜, topic, extras) 엔트리들 → 전역 주차 PlanRow.
+    주차 번호는 달력 연속(첫 주부터 7일 간격) — 세션 없는 주(방학 등)를 건너뛰어도
+    번호는 이어진다 (B6-019 gold: 감사절 휴강 주 포함 16주)."""
+    if len(entries) < 3:
+        return []
+    mondays = sorted({e[0] for e in entries})
+    first = mondays[0]
+    rows: list[PlanRow] = []
+    for monday in mondays:
+        group = [e for e in entries if e[0] == monday]
+        topics = list(dict.fromkeys(t for _, _, t, _ in group if t))   # 같은 주 중복 제거
+        extras = [x for _, _, _, xs in group for x in xs]
+        dates = list(dict.fromkeys(dr for _, dr, _, _ in group))
+        rows.append(PlanRow(
+            week=(monday - first) // 7 + 1,
+            date_range="·".join(dates),
+            topic=" / ".join(topics) or None,
+            extras=extras or None,
+            date_labeled=True,
+        ))
+    return rows
+
+
+def _date_grouped_rows(tables: list, year: Optional[int]) -> list[PlanRow]:
+    """문서의 모든 표에서 날짜 엔트리를 모아 달력 주 단위로 전역 주차를 부여
+    (표가 페이지마다 쪼개져도 번호는 문서 전체 기준 — B6-020 9주)."""
+    if not year:
+        return []                          # 주 경계를 확정할 수 없다 — abstain
+    first_month_ref: list = []
+    entries: list = []
+    for t in tables:
+        entries.extend(_date_entries_from_table(t, year, first_month_ref))
+    return _plan_rows_from_entries(entries)
+
+
+def _date_grouped_text_rows(doc, year: Optional[int]) -> list[PlanRow]:
+    """표 없는 산문형 일정 (B6-019: 'Schedule of Classes' 아래 'Sept. 2, & 7- 주제'
+    줄들) — 일정 제목 이후의 날짜-선행 줄을 엔트리로 모아 같은 주차 부여를 적용.
+    날짜 줄 사이의 이어짐 줄은 topic에 최대 2줄까지 연결."""
+    if not year:
+        return []
+    import datetime as _dt
+
+    def _headline_incomplete(t: str) -> bool:
+        """헤드라인이 줄바꿈으로 잘렸는가 — 소문자 단어/쉼표로 끝나고 종결부호가
+        없으면 다음 줄이 이어짐 ('function of the' ✓ / 'Hedge Funds' ✗)."""
+        t = t.rstrip()
+        if not t or t.endswith((".", "!", "?", ")")):
+            return False
+        last = t.split()[-1]
+        return last[0].islower() or t.endswith((",", ";", "&"))
+
+    def _looks_section_header(s: str) -> bool:
+        """'The Asset Managers' 같은 짧은 TitleCase 단독 줄 — gold는 다음 세션에
+        [태그]로 붙인다 (B5-034 표기, B6-019 gold)."""
+        words = s.split()
+        return (1 < len(words) <= 6 and not s.endswith((".", ",", ";", ":"))
+                and sum(1 for w in words if w[:1].isupper()) >= max(2, len(words) - 1))
+
+    def parse_from(start: int) -> list:
+        entries: list = []
+        first_month_ref: list = []
+        cur = None
+        pending_header = None
+        dry = 0
+        for ln in doc.full_text[start:].splitlines():
+            s = ln.strip()
+            if not s:
+                continue
+            if re.match(r"^[•·▪‣]\s*", s):
+                continue                                  # 세션 하위 불릿 상세 — 헤드라인만 취한다 (B6-019 gold)
+            md = _first_md(s[:28])
+            sep = re.search(r"\s*[-–—:]\s+|[-–—:]\s*", s[2:])
+            if md and sep:
+                mo, day0 = md
+                if not first_month_ref:
+                    first_month_ref.append(mo)
+                y = year + 1 if mo < first_month_ref[0] - 6 else year
+                raw = s[:sep.start() + 2].strip(" ,&–—-:")
+                topic = s[sep.end() + 2:].strip()
+                if pending_header:
+                    topic = f"[{pending_header}] {topic}".strip()
+                    pending_header = None
+                # 'Sept. 9, 14 & 16' — 세션이 여러 날이면 날짜별 엔트리 (주 걸침 반영)
+                days = [day0] + [int(x) for x in re.findall(r"[,&]\s*(?:and\s+)?(\d{1,2})\b", raw)]
+                cur = None
+                for day in days:
+                    try:
+                        d = _dt.date(y, mo, day)
+                    except ValueError:
+                        continue
+                    cur = [d.toordinal() - d.weekday(), raw, topic, []]
+                    entries.append(cur)
+                dry = 0
+            elif cur is not None and _headline_incomplete(cur[2]) and len(s) > 2:
+                # 잘린 헤드라인 이어붙임 — 같은 세션의 모든 날짜 엔트리에 반영
+                for e in entries:
+                    if e[1] == cur[1]:
+                        e[2] = (e[2] + " " + s).strip()
+            elif _looks_section_header(s):
+                pending_header = s
+            else:
+                dry += 1
+                if dry >= 12:                             # 일정 블록이 끝났다
+                    break
+        return [tuple(e) for e in entries]
+
+    # 'schedule' 단어는 본문 곳곳에 나온다 — 헤딩 후보마다 시도해 날짜 줄이
+    # 실제로 이어지는(≥3) 첫 블록을 쓴다 (B6-019: 진짜 헤딩은 문서 후반)
+    for m in re.finditer(r"^.*(?:schedule|weekly\s*plan|강의\s*계획|수업\s*계획|주별|주차별).*$",
+                         doc.full_text, re.IGNORECASE | re.MULTILINE):
+        rows = _plan_rows_from_entries(parse_from(m.end()))
+        if rows:
+            return rows
+    return []
 
 
 def _check_alignment(rows: list[PlanRow]) -> list[str]:
@@ -346,6 +545,19 @@ def parse_weekly_plan(doc) -> WeeklyPlan:
             rows = _rows_from_table(table)
             if rows:
                 fragments.append(rows)
+    synthesized = False
+    if not fragments:
+        # 주차 열이 전혀 없으면 날짜/세션 기반 표에 주차를 부여해 본다 (정책 A) —
+        # 전 표를 한 번에 묶어 전역 주차 번호 (표가 페이지로 쪼개져도 이어진다).
+        # 표가 아예 없으면 산문형 일정 줄(B6-019)에 같은 규칙을 적용.
+        from .rule_fields import extract_academic_year
+
+        year = extract_academic_year(doc)
+        rows = _date_grouped_rows([t for p in doc.pages for t in p.tables], year) \
+            or _date_grouped_text_rows(doc, year)
+        if rows:
+            fragments.append(rows)
+            synthesized = True             # 달력 공백 주(방학)의 번호 건너뜀은 실제 — 갭 허용
     if not fragments:
         return WeeklyPlan()
 
@@ -363,9 +575,11 @@ def parse_weekly_plan(doc) -> WeeklyPlan:
         ws = sorted({r.week for r in rs if r.week is not None})
         return not ws or ws == list(range(ws[0], ws[0] + len(ws)))
 
-    # 병합 후보만 경계 갭을 허용 — 단, 모든 프래그먼트가 내부적으로 연속일 때
-    candidates = [(merged, all(_contiguous(rs) for rs in fragments))] + \
-                 [(rs, False) for rs in sorted(fragments, key=len, reverse=True)]
+    # 병합 후보만 경계 갭을 허용 — 모든 프래그먼트가 내부 연속이거나, 날짜 합성
+    # 주차(공백 주 번호 건너뜀이 날짜로 검증됨)일 때
+    allow_merged = all(_contiguous(rs) for rs in fragments) or synthesized
+    candidates = [(merged, allow_merged)] + \
+                 [(rs, synthesized) for rs in sorted(fragments, key=len, reverse=True)]
 
     first: Optional[WeeklyPlan] = None
     for rows, allow_gap in candidates:

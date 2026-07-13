@@ -412,7 +412,15 @@ def extract_rule_fields(doc) -> dict:
 
     raw_time = labeled_value(doc, "class_time", cut=False)
     if raw_time and not _TIME_EVIDENCE.search(raw_time):
-        raw_time = None
+        # 예외 (B6-002): 계절학기 문서의 bare 교시열("678")은 월~금 매일 수업의
+        # 관행 표기 — 문서가 계절학기임을 스스로 밝힐 때만 raw로 남긴다 (해석은
+        # resolver 몫). 정규학기 mangled 표의 bare 숫자열(B3-038)은 계속 차단.
+        seasonal = re.search(
+            r"계절\s*학기|하계|동계|(?:여름|겨울)\s*(?:계절)?\s*학기"
+            r"|summer\s*(?:session|school|term)|winter\s*(?:session|term)",
+            doc.full_text, re.IGNORECASE)
+        if not (seasonal and re.fullmatch(r"[\d,.~\-\s]+", raw_time.strip())):
+            raw_time = None
 
     # 교시 코드(P1, 1A)나 시간범위 딸린 교시("P1(09:00~10:40)"), 1-2자리 bare 숫자는
     # 강의실이 아니다 — 시간표가 강의실 칸으로 새는 반복 오파싱 차단 (B5-007/034/038)

@@ -332,3 +332,60 @@ def test_b5_037_bracket_tagged_rows_become_other_events():
     sub = extract_subsystem(_tbl_doc(t))
     refs = {e["raw_reference"] for e in sub["schedule.others"]}
     assert refs == {"Week 2", "Week 3", "Week 4"}
+
+
+# --- 배치6 메모 대응 (2026-07-13): 정책 A(날짜→주차)·계절학기 교시열 -----------------
+
+def test_b6_020_date_sessions_group_into_calendar_weeks():
+    # 주차 열 없는 세션 표 → 달력 주 단위 전역 번호 (표가 쪼개져도 이어짐)
+    from syllabus_classifier.extract.normalize_doc import NormalizedDoc, Page, Table
+    from syllabus_classifier.extract.table_plan import parse_weekly_plan
+
+    t1 = Table(header=["DATE", "TOPIC"],
+               rows=[["March 11", "Emergence of Reporting"],
+                     ["March 16-20", "Spring Break"],
+                     ["March 23", "Reporting Ecosystem"]])
+    t2 = Table(header=["DATE", "TOPIC"],
+               rows=[["March 25", "Conceptual Frameworks"],
+                     ["April 6", "Social Issues"]])
+    doc = NormalizedDoc(doc_id="t", pages=[Page(page_no=1, text="2026학년도 1학기", tables=[t1, t2])])
+    plan = parse_weekly_plan(doc)
+    got = {r.week: r.topic for r in plan.rows}
+    assert got[1] == "Emergence of Reporting"          # Mar 11 (Wed) 주
+    assert got[2] == "Spring Break"                    # Mar 16 주
+    assert got[3] == "Reporting Ecosystem / Conceptual Frameworks"  # Mar 23·25 같은 주, 표 걸침
+    assert got[5] == "Social Issues" and plan.total_weeks == 5      # 빈 주(4/1주) 건너뛰어도 번호 유지
+
+
+def test_b6_019_prose_schedule_lines_with_multiday_sessions():
+    from syllabus_classifier.extract.normalize_doc import NormalizedDoc, Page
+    from syllabus_classifier.extract.table_plan import parse_weekly_plan
+
+    text = (
+        "2024학년도 가을학기\nSchedule of Classes\n"
+        "Sept. 2, & 7- Overview of the Financial Services Industry and the\n"
+        "Investment Banking Business.\n"
+        "• A complex DNA\n• Financial intermediation\n"
+        "The Asset Managers\n"
+        "Sept. 9, 14 & 16 - Private Equity and Hedge Funds\n"
+        "• Evolution of Private Equity business\n"
+        "Sept. 21 & 23 - Asset Management and Private Wealth Management\n"
+    )
+    doc = NormalizedDoc(doc_id="t", pages=[Page(page_no=1, text=text, tables=[])])
+    plan = parse_weekly_plan(doc)
+    got = {r.week: r.topic for r in plan.rows}
+    # 잘린 헤드라인 이어붙임 + 불릿 제외 + 섹션 헤더 [태그] + 주 걸침 세션(9/14 vs 16)
+    assert "Investment Banking Business." in got[1] and "complex DNA" not in got[1]
+    assert got[2].startswith("[The Asset Managers] Private Equity")
+    assert "Private Equity" in got[3] and "Asset Management and Private Wealth" in got[3]
+    assert all(r.date_labeled for r in plan.rows)
+
+
+def test_b6_002_seasonal_bare_period_string_kept_as_raw_time():
+    from syllabus_classifier.extract.rule_fields import extract_rule_fields
+
+    t = Table(header=[], rows=[["강의시간", "678"]])
+    seasonal = doc_from("계절학기에는 오픈북테스트로 진행한다", tables=[t])
+    regular = doc_from("2026학년도 1학기 정규과정", tables=[t])
+    assert extract_rule_fields(seasonal)["meeting.raw_time"] == "678"  # B6-002: 계절학기 관행 표기
+    assert extract_rule_fields(regular)["meeting.raw_time"] is None    # B3-038 가드 유지

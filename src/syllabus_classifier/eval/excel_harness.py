@@ -131,8 +131,13 @@ def ours_fields_from_doc(doc) -> dict[str, object]:
 
     def weekly_plan_serialized():
         rows = sub.get("schedule.weekly_plan") or []
-        parts = [f"Week {r['week']}: {r['topic']}" for r in rows
-                 if r.get("week") is not None and (r.get("topic") or "").strip()]
+        parts = []
+        for r in rows:
+            if r.get("week") is None or not (r.get("topic") or "").strip():
+                continue
+            # 날짜 합성 주차는 `Week N (날짜):` (정책 A — B6-019/020 gold 표기)
+            label = f" ({r['date_range']})" if r.get("date_labeled") and r.get("date_range") else ""
+            parts.append(f"Week {r['week']}{label}: {r['topic']}")
         return " ; ".join(parts) or None
 
     contact = " ; ".join(v for v in (rule.get("instructors.email"), rule.get("instructors.phone")) if v) or None

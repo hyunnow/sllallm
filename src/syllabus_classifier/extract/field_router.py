@@ -170,7 +170,8 @@ def extract_subsystem(doc, classifier=None) -> dict:
         "schedule.weekly_plan": [
             {"week": r.week, "date_range": r.date_range, "topic": _topic_with_extras(r),
              "textbook_range": r.textbook_range, "remarks": r.remarks,
-             "extras": r.extras}          # 원문 줄 보존 — 무기한과제 중복 억제의 대조원
+             "extras": r.extras,          # 원문 줄 보존 — 무기한과제 중복 억제의 대조원
+             "date_labeled": r.date_labeled}
             for r in plan.rows
         ],
         "schedule.total_weeks": plan.total_weeks,
