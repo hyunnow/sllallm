@@ -50,6 +50,7 @@ _EMPTY: dict[str, Any] = {
     },
     "schedule": {
         "weekly_plan": [],
+        "total_weeks": None,           # 표에서 확정된 총 주차 수 (subsystem)
         "exams": [],
         "assignments": [],
     },

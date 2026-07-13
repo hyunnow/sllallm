@@ -87,6 +87,7 @@ def build_record(doc, outputs: dict[str, dict]) -> dict:
     rec["schedule"]["exams"] = take("schedule.exams") or []
     rec["schedule"]["assignments"] = take("schedule.assignments") or []
     rec["schedule"]["weekly_plan"] = take("schedule.weekly_plan") or []
+    rec["schedule"]["total_weeks"] = (outputs.get("subsystem") or {}).get("schedule.total_weeks")
 
     for f in ("attendance_policy", "disability_support", "learning_ethics"):
         rec["admin"][f] = take(f"admin.{f}")
