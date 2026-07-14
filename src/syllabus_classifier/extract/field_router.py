@@ -99,6 +99,30 @@ def _merge_events(keep: dict, drop: dict) -> None:
         keep["title"] = dt
 
 
+# 주차표 헤더/셀 조각이 이벤트로 새는 것 (bare 숫자·'주차(Week)'·'Week 월/').
+_GARBAGE_TITLE = re.compile(r"^[\d\s/.\-]+$|주\s*차\s*\(?\s*week|week\s*[월화수목금토일/]", re.I)
+
+
+def _collapse_dateless(entries: list) -> list:
+    """날짜 없는 동일 (type, 제목) 이벤트를 하나로 접는다 — '중간고사'×6·'발표'×8 처럼 한
+    이벤트/주차태그가 여러 후보로 반복 추출되어 캘린더에 중복되는 것을 막는다(blocker ①).
+    날짜가 확정된 이벤트는 서로 다른 실이벤트이므로 각자 유지. 주차표 조각 제목은 드롭."""
+    out: list = []
+    seen: dict = {}
+    for e in entries:
+        title = (e.get("title") or "").strip()
+        if not e.get("resolved_date"):
+            if not title or _GARBAGE_TITLE.search(title):
+                continue                                 # 무날짜 + 쓰레기/무제목 → 드롭
+            key = (e.get("type"), re.sub(r"\s+", "", title).lower())
+            if key in seen:
+                _merge_events(seen[key], e)
+                continue
+            seen[key] = e
+        out.append(e)
+    return out
+
+
 def _dedup_events(entries: list, *, by_date_sig: bool) -> list:
     """① 인접 조각 접기: 같은 page·type 이고 char_start 가 인접하며 뒤 조각이 새 날짜
     anchor 가 아니면(요일·시각 등 연속 세부) 한 이벤트로. ② by_date_sig 면 (type, 날짜
@@ -230,8 +254,8 @@ def extract_subsystem(doc, classifier=None) -> dict:
     # 한 이벤트가 인접 후보로 쪼개진 조각을 접는다. 시험은 (type,날짜서명)으로 분류기·
     # 주차표 교차-출처까지 병합; 과제는 같은 마감이라도 서로 다른 과제일 수 있어 인접
     # 조각만 접는다(날짜서명 병합은 안 함).
-    exams = _dedup_events(exams, by_date_sig=True)
-    assignments = _dedup_events(assignments, by_date_sig=False)
+    exams = _collapse_dateless(_dedup_events(exams, by_date_sig=True))
+    assignments = _collapse_dateless(_dedup_events(assignments, by_date_sig=False))
 
     return {
         "meeting.status": status,

@@ -39,7 +39,7 @@ _DAY_RANGE = re.compile(r"(?P<x>[A-Za-z]{3,9}|[월화수목금토일])\s*[-~]\s*
 # ONLY explicit 교시-suffixed lists are periods. Bare digit lists ("금 1,2,3",
 # "화 19,20,21") are ambiguous — even the human reviewer couldn't tell periods
 # from o'clock hours (B2-020/022 memos) — so we abstain on them.
-_PERIODS = re.compile(r"(\d{1,2}(?:\s*[,·]\s*\d{1,2})*)\s*교시")
+_PERIODS = re.compile(r"(\d{1,2}(?:\s*[,·]\s*\d{1,2})*)\s*(?:교시|차시)")   # 차시=교시 동의어(일부 학교)
 
 _ROOM_TAIL = re.compile(r"\b\d{2,4}-[A-Za-z]?\d{2,4}\b")            # 607-208, 104-E101
 # 콜론 없는 HHMM 범위: "1400-1500" -> 14:00-15:00 (KOCW 건국 등). 2자리는 교시라 제외.
@@ -123,7 +123,9 @@ def to_notation(raw: str, *, timetable_key: Optional[str] = None, kb=None) -> Op
     pending_days: list[str] = []
     # a comma splits segments ONLY when what follows isn't a digit — "5,6교시"
     # period lists and "10:30,11:45"-style enumerations must stay intact.
-    segments = re.split(r"[;\n]|\s및\s|,(?=\s*[^\d\s])", text)
+    # '/' 는 요일-시각 그룹 구분자("월 12:00~13:15 / 목 14:00~15:50", "화2교시 / 목 …").
+    # 시각/방번호엔 '/'가 안 쓰여 안전. "월/수 11:00" 는 pending_days 로 시각 공유 유지.
+    segments = re.split(r"[;\n/]|\s및\s|,(?=\s*[^\d\s])", text)
 
     for seg in segments:
         seg = seg.strip()
@@ -137,17 +139,19 @@ def to_notation(raw: str, *, timetable_key: Optional[str] = None, kb=None) -> Op
         else:
             days = seg_days or pending_days
         if not days:
-            return None                                  # a segment we can't place
-
+            continue                                     # 배치 불가 세그먼트는 건너뛴다(전체
+                                                         # 중단 금지) — 다른 세그먼트의 확정
+                                                         # 슬롯은 살린다. 전부 실패면 하단에서
+                                                         # 최종 abstain(if not slots: None).
         rng = _TIME_RANGE.search(seg)
         if rng:
             a, b = _to_24h(rng.group("a")), _to_24h(rng.group("b"))
             if not a or not b:
-                return None
+                continue
             if b <= a:                                    # "9:00-10:40am": end carries meridiem
                 b2 = _add_minutes(b, 12 * 60)
                 if b2 <= a:
-                    return None
+                    continue
                 b = b2
             for d in days:
                 slots.append((d, a, b))
@@ -172,7 +176,7 @@ def to_notation(raw: str, *, timetable_key: Optional[str] = None, kb=None) -> Op
         if dur and single:
             a = _to_24h(single.group(0))
             if not a:
-                return None
+                continue
             for d in days:
                 slots.append((d, a, _add_minutes(a, int(dur.group(1)))))
             pending_days = []
@@ -182,12 +186,12 @@ def to_notation(raw: str, *, timetable_key: Optional[str] = None, kb=None) -> Op
         if pm:
             nums = [int(n) for n in re.findall(r"\d{1,2}", pm.group(1))]
             if not nums or not timetable_key:
-                return None
+                continue                                 # 교시표 KB 없으면 이 세그먼트만 abstain
             from ..kb.resolver import resolve_period_reference
 
             r = resolve_period_reference(nums, timetable_key=timetable_key, kb=kb)
             if r.needs_review or not r.start_time:
-                return None
+                continue
             for d in days:
                 slots.append((d, r.start_time, r.end_time))
             pending_days = []
@@ -212,7 +216,7 @@ def to_notation(raw: str, *, timetable_key: Optional[str] = None, kb=None) -> Op
         if _segment_days(seg):
             pending_days = days                           # days-only segment ("월,")
             continue
-        return None
+        continue                                          # 분류 불가 세그먼트는 건너뛴다
 
     if not slots:
         return None

@@ -22,6 +22,9 @@ env/
 # contains instructor personal data and would bloat the repo. Use Git LFS or an
 # external store if you ever need it versioned.
 실라버스 모음 폴더/
+# 합성 강의계획서 데이터셋 (1,059 PDF + 정답 매니페스트) — 공개 레포에 커밋 금지(용량)
+강의계획서_데이터셋/
+강의계획서_데이터셋.zip
 
 # Data — the real syllabi and derived artifacts are NOT committed (privacy + size).
 # Keep the directory structure via .gitkeep, ignore the contents.

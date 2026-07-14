@@ -118,6 +118,169 @@ schools:
     aliases: ["경북대", "Kyungpook National University", "KNU"]
     campuses: ["대구", "상주"]
     domains: ['knu.ac.kr']
+  # --- 2026-07-14: 강의계획서_데이터셋(53개교) 커버리지 확장. 영문명/도메인은
+  # 매니페스트 실측(실존 ac.kr 도메인). 짧은 별칭·영문 substring 충돌은 제거했다
+  # (서울과기대 'Seoul National University of…'⊃서울대 → SeoulTech 만 별칭).
+  catholic:
+    canonical: "가톨릭대학교"
+    aliases: ["가톨릭대", "The Catholic University of Korea"]
+    campuses: []
+    domains: ['catholic.ac.kr']
+  kangwon:
+    canonical: "강원대학교"
+    aliases: ["강원대", "Kangwon National University"]
+    campuses: []
+    domains: ['kangwon.ac.kr']
+  gyeongsang:
+    canonical: "경상국립대학교"
+    aliases: ["경상국립대", "경상대", "Gyeongsang National University"]
+    campuses: []
+    domains: ['gnu.ac.kr']
+  keimyung:
+    canonical: "계명대학교"
+    aliases: ["계명대", "Keimyung University"]
+    campuses: []
+    domains: ['kmu.ac.kr']
+  kwangwoon:
+    canonical: "광운대학교"
+    aliases: ["광운대", "Kwangwoon University"]
+    campuses: []
+    domains: ['kw.ac.kr']
+  gist:
+    canonical: "광주과학기술원"
+    aliases: ["GIST", "Gwangju Institute of Science and Technology"]
+    campuses: []
+    domains: ['gist.ac.kr']
+  dgist:
+    canonical: "대구경북과학기술원"
+    aliases: ["DGIST", "Daegu Gyeongbuk Institute of Science and Technology"]
+    campuses: []
+    domains: ['dgist.ac.kr']
+  donga:
+    canonical: "동아대학교"
+    aliases: ["동아대", "Dong-A University"]
+    campuses: []
+    domains: ['donga.ac.kr']
+  myongji:
+    canonical: "명지대학교"
+    aliases: ["명지대", "Myongji University"]
+    campuses: []
+    domains: ['mju.ac.kr']
+  pukyong:
+    canonical: "부경대학교"
+    aliases: ["부경대", "Pukyong National University"]
+    campuses: []
+    domains: ['pknu.ac.kr']
+  sangmyung:
+    canonical: "상명대학교"
+    aliases: ["상명대", "Sangmyung University"]
+    campuses: []
+    domains: ['smu.ac.kr']
+  seoultech:
+    canonical: "서울과학기술대학교"
+    aliases: ["서울과학기술대", "서울과기대", "SeoulTech"]
+    campuses: []
+    domains: ['seoultech.ac.kr']
+  uos:
+    canonical: "서울시립대학교"
+    aliases: ["서울시립대", "University of Seoul"]
+    campuses: []
+    domains: ['uos.ac.kr']
+  sookmyung:
+    canonical: "숙명여자대학교"
+    aliases: ["숙명여대", "숙명", "Sookmyung Women's University"]
+    campuses: []
+    domains: ['sookmyung.ac.kr']
+  soonchunhyang:
+    canonical: "순천향대학교"
+    aliases: ["순천향대", "Soonchunhyang University"]
+    campuses: []
+    domains: ['sch.ac.kr']
+  ajou:
+    canonical: "아주대학교"
+    aliases: ["아주대", "Ajou University"]
+    campuses: []
+    domains: ['ajou.ac.kr']
+  yeungnam:
+    canonical: "영남대학교"
+    aliases: ["영남대", "Yeungnam University"]
+    campuses: []
+    domains: ['yu.ac.kr']
+  ulsan:
+    canonical: "울산대학교"
+    aliases: ["울산대", "University of Ulsan"]     # UNIST(울산과학기술원)와 별개
+    campuses: []
+    domains: ['ulsan.ac.kr']
+  wonkwang:
+    canonical: "원광대학교"
+    aliases: ["원광대", "Wonkwang University"]
+    campuses: []
+    domains: ['wku.ac.kr']
+  inje:
+    canonical: "인제대학교"
+    aliases: ["인제대", "Inje University"]
+    campuses: []
+    domains: ['inje.ac.kr']
+  inha:
+    canonical: "인하대학교"
+    aliases: ["인하대", "Inha University"]
+    campuses: []
+    domains: ['inha.ac.kr']
+  chonnam:
+    canonical: "전남대학교"
+    aliases: ["전남대", "Chonnam National University"]
+    campuses: []
+    domains: ['jnu.ac.kr']
+  jeonbuk:
+    canonical: "전북대학교"
+    aliases: ["전북대", "Jeonbuk National University"]
+    campuses: []
+    domains: ['jbnu.ac.kr']
+  jeju:
+    canonical: "제주대학교"
+    aliases: ["제주대", "Jeju National University"]
+    campuses: []
+    domains: ['jejunu.ac.kr']
+  chosun:
+    canonical: "조선대학교"
+    aliases: ["조선대", "Chosun University"]
+    campuses: []
+    domains: ['chosun.ac.kr']
+  chungnam:
+    canonical: "충남대학교"
+    aliases: ["충남대", "Chungnam National University"]
+    campuses: []
+    domains: ['cnu.ac.kr']
+  chungbuk:
+    canonical: "충북대학교"
+    aliases: ["충북대", "Chungbuk National University"]
+    campuses: []
+    domains: ['chungbuk.ac.kr']
+  postech:
+    canonical: "포항공과대학교"
+    aliases: ["포항공대", "POSTECH", "Pohang University of Science and Technology"]
+    campuses: []
+    domains: ['postech.ac.kr']
+  hufs:
+    canonical: "한국외국어대학교"
+    aliases: ["한국외대", "Hankuk University of Foreign Studies"]
+    campuses: ["서울", "글로벌"]
+    domains: ['hufs.ac.kr']
+  kau:
+    canonical: "한국항공대학교"
+    aliases: ["한국항공대", "Korea Aerospace University"]   # 고려대(KU)와 별개
+    campuses: []
+    domains: ['kau.ac.kr']
+  handong:
+    canonical: "한동대학교"
+    aliases: ["한동대", "Handong Global University"]
+    campuses: []
+    domains: ['handong.edu', 'handong.ac.kr']
+  hallym:
+    canonical: "한림대학교"
+    aliases: ["한림대", "Hallym University"]
+    campuses: []
+    domains: ['hallym.ac.kr']
 
 # Generic patterns that mark a token as a school (not a department):
 school_patterns: ["대학교$", "University"]
