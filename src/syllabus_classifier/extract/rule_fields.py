@@ -455,6 +455,34 @@ def _clean_instructor(value: Optional[str]) -> Optional[str]:
     return v or None
 
 
+def _clean_title(s: Optional[str]) -> Optional[str]:
+    """과목명 표면 정규화: 셀 내 개행/중복 공백을 한 칸으로, 선두 불릿·마커 제거.
+    포털/PDF 표에서 값이 여러 줄로 wrap 되어 '*BUSINESS\\nMANAGEMENT' 처럼 들어오는 걸
+    'BUSINESS MANAGEMENT' 로 편다 (2026-07 섀도 실측)."""
+    if not s:
+        return s
+    s = re.sub(r"\s+", " ", s).strip()
+    s = re.sub(r"^[\*•▪◦·\-–—]+\s*", "", s).strip()
+    return s or None
+
+
+def _derive_titles(title: Optional[str]) -> "tuple[Optional[str], Optional[str]]":
+    """정제된 제목 -> (title_ko, title_en). 개행/마커 정규화 후, 한국어+영문이 한 값에
+    섞이면(컴퓨터활용기초 COMPUTER…) 영문 앞을 title_ko, 영문 run 을 title_en 으로 분리."""
+    title = _clean_title(title)
+    if not title:
+        return None, None
+    if not re.search(r"[가-힣]", title):
+        return None, title
+    m = re.search(r"[A-Za-z][A-Za-z0-9 ,:&()'\-]{4,}", title)
+    if not m:
+        return title, None
+    title_en = m.group(0).strip()
+    head = title[:m.start()].strip(" -–—/·|()[]")
+    title_ko = head if re.search(r"[가-힣]", head) else title
+    return title_ko, title_en
+
+
 def extract_rule_fields(doc) -> dict:
     """One pass over a NormalizedDoc -> flat {field_path: value} for the rule method."""
     school, campus = extract_school_campus(doc)
@@ -469,14 +497,7 @@ def extract_rule_fields(doc) -> dict:
             if cand and not _is_any_label(cand) and re.search(r"[가-힣A-Za-z]", cand):
                 raw_title = cand
     title, title_code = split_code_from_title(raw_title) if raw_title else (None, None)
-    title_ko = title_en = None
-    if title:
-        if re.search(r"[가-힣]", title):
-            title_ko = title
-            m = re.search(r"[A-Za-z][A-Za-z0-9 ,:&()'\-]{4,}", title)
-            title_en = m.group(0).strip() if m else None
-        else:
-            title_en = title
+    title_ko, title_en = _derive_titles(title)
     credits_v = labeled_value(doc, "credits")
     credits = None
     if credits_v:

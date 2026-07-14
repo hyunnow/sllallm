@@ -82,6 +82,30 @@ def test_async_still_emits_no_class_events():
     assert not any("수업" in e.get("review_reason", "") for e in out["needs_review_events"])
 
 
+# --- 과목명 개행/마커 정규화 + 한/영 분리 (섀도 실측: 표 wrap 된 제목) ---
+def test_title_collapses_newlines_and_markers():
+    from syllabus_classifier.extract.rule_fields import _derive_titles
+    # 영문 제목이 셀에서 여러 줄로 wrap + 선두 '*' 마커
+    assert _derive_titles("*BUSINESS\nMANAGEMENT AND\nREAL WORLD\nPRACTICE") == \
+        (None, "BUSINESS MANAGEMENT AND REAL WORLD PRACTICE")
+    assert _derive_titles("INTRO TO ENTREPRENEURSHIP &\nVENTURE CAPITAL") == \
+        (None, "INTRO TO ENTREPRENEURSHIP & VENTURE CAPITAL")
+
+
+def test_title_splits_korean_and_english():
+    from syllabus_classifier.extract.rule_fields import _derive_titles
+    # 한국어 제목 + 영문 제목이 한 값에 개행으로 섞임 → 분리
+    assert _derive_titles("컴퓨터활용기초\nCOMPUTER APPLICATION BASICS") == \
+        ("컴퓨터활용기초", "COMPUTER APPLICATION BASICS")
+
+
+def test_title_korean_only_unchanged():
+    from syllabus_classifier.extract.rule_fields import _derive_titles
+    # 한국어 단독 제목은 그대로 (회귀 방지)
+    assert _derive_titles("미분적분학과벡터해석(1)") == ("미분적분학과벡터해석(1)", None)
+    assert _derive_titles("미적분학") == ("미적분학", None)
+
+
 # --- 포털 URL 도메인으로 학교 감지 (깨진 export 에서 학교명이 소실돼도 URL 은 남을 때) ---
 def test_school_from_portal_url_domain():
     from syllabus_classifier.common.config import load_config
