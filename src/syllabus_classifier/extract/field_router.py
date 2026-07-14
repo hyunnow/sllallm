@@ -76,6 +76,66 @@ def _matched_cue(ctx: str) -> "tuple[str | None, str | None]":
     return None, None
 
 
+# 한 시험/과제 문장이 날짜·요일·시각 토큰마다 겹치는 후보로 쪼개져 다중 항목이 되는 것을
+# 접기 위한 유틸 (2026-07 섀도 실측: "기말고사 12월14일 (화) 2:00-3:00PM" 한 줄이 시험 5개로).
+_DATE_SIG = re.compile(
+    r"\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\s*[/.\-]\s*\d{1,2}|\d{1,4}\s*주\s*차?|week\s*\d+", re.I)
+
+
+def _date_sig(entry: dict) -> "str | None":
+    """이벤트의 날짜 서명(제목+raw 에서 첫 날짜/주차 토큰) — 같은 시험 판별용."""
+    m = _DATE_SIG.search(f"{entry.get('title') or ''} {entry.get('raw_reference') or ''}")
+    return re.sub(r"\s+", "", m.group(0).lower()) if m else None
+
+
+def _merge_events(keep: dict, drop: dict) -> None:
+    """drop 을 keep 에 흡수 — 확정 날짜는 물려받고, 더 짧고 깨끗한 이벤트명을 남긴다."""
+    if not keep.get("resolved_date") and drop.get("resolved_date"):
+        keep["resolved_date"] = drop["resolved_date"]
+        keep["resolved_by"] = drop.get("resolved_by")
+        keep["needs_review"] = drop.get("needs_review", keep.get("needs_review"))
+    kt, dt = (keep.get("title") or ""), (drop.get("title") or "")
+    if dt and (not kt or len(dt) < len(kt)):
+        keep["title"] = dt
+
+
+def _dedup_events(entries: list, *, by_date_sig: bool) -> list:
+    """① 인접 조각 접기: 같은 page·type 이고 char_start 가 인접하며 뒤 조각이 새 날짜
+    anchor 가 아니면(요일·시각 등 연속 세부) 한 이벤트로. ② by_date_sig 면 (type, 날짜
+    서명)이 같은 것을 교차-출처(분류기·주차표)까지 병합. 위치 없는 항목은 그대로 흐른다."""
+    positioned = sorted((e for e in entries if e.get("_char_start") is not None),
+                        key=lambda e: (e.get("_page") or 0, e["_char_start"]))
+    collapsed = [e for e in entries if e.get("_char_start") is None]
+    for e in positioned:
+        e = dict(e)
+        e["_end"] = e["_char_start"] + len(e.get("raw_reference") or "")
+        prev = collapsed[-1] if collapsed and collapsed[-1].get("_char_start") is not None else None
+        if prev and e.get("_page") == prev.get("_page") and e.get("type") == prev.get("type") \
+                and e["_char_start"] - prev["_end"] <= 30 \
+                and (_date_sig(e) is None or _date_sig(e) == _date_sig(prev)):
+            _merge_events(prev, e)
+            prev["_end"] = max(prev["_end"], e["_end"])
+            continue
+        collapsed.append(e)
+    if by_date_sig:
+        out: list = []
+        index: dict = {}
+        for e in collapsed:
+            sig = _date_sig(e)
+            key = (e.get("type"), sig) if sig else None
+            if key and key in index:
+                _merge_events(index[key], e)
+                continue
+            out.append(e)
+            if key:
+                index[key] = e
+        collapsed = out
+    for e in collapsed:
+        for k in ("_char_start", "_page", "_end"):
+            e.pop(k, None)
+    return collapsed
+
+
 def extract_subsystem(doc, classifier=None) -> dict:
     """Time/exam/assignment/office-hours via the existing candidate pipeline."""
     clf = classifier or HeuristicClassifier()
@@ -167,6 +227,12 @@ def extract_subsystem(doc, classifier=None) -> dict:
         bucket = {"exam": exams, "assignment": assignments}.get(ev["kind"], others)
         bucket.append(entry)
 
+    # 한 이벤트가 인접 후보로 쪼개진 조각을 접는다. 시험은 (type,날짜서명)으로 분류기·
+    # 주차표 교차-출처까지 병합; 과제는 같은 마감이라도 서로 다른 과제일 수 있어 인접
+    # 조각만 접는다(날짜서명 병합은 안 함).
+    exams = _dedup_events(exams, by_date_sig=True)
+    assignments = _dedup_events(assignments, by_date_sig=False)
+
     return {
         "meeting.status": status,
         "meeting.events": class_events if status == "present" else [],
@@ -206,6 +272,9 @@ def _dated_entry(cand, extra: dict) -> dict:
         # 확정" 가드가 이 표기를 요구한다 (v3 §9; 전 코퍼스 스모크에서 미표기 19건)
         "resolved_by": "in_document" if resolved else None,
         "needs_review": resolved is None,
+        # 조각 접기용 소스 위치 (dedup 후 제거됨)
+        "_char_start": getattr(cand, "char_start", None),
+        "_page": cand.page,
     }
     entry.update(extra)
     return entry

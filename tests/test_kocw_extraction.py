@@ -82,6 +82,42 @@ def test_async_still_emits_no_class_events():
     assert not any("수업" in e.get("review_reason", "") for e in out["needs_review_events"])
 
 
+# --- 시험 조각 접기 (한 시험 문장이 날짜/요일/시각 토큰마다 다중 항목이 되던 것) ---
+def test_exam_fragments_collapse():
+    from syllabus_classifier.extract.field_router import _dedup_events
+    frags = [
+        {"type": "final", "title": "기말고사", "raw_reference": "12월14일",
+         "resolved_date": None, "needs_review": True, "_char_start": 6, "_page": 4},
+        {"type": "final", "title": "기말고사: 12월14일", "raw_reference": "화",
+         "resolved_date": None, "needs_review": True, "_char_start": 14, "_page": 4},
+        {"type": "final", "title": "기말고사: 12월14일 (화)", "raw_reference": "2:00-3:00",
+         "resolved_date": None, "needs_review": True, "_char_start": 17, "_page": 4},
+        # 주차표 유래 같은 시험 (위치 없음, 날짜서명 동일) — 교차-출처 병합 대상
+        {"type": "final", "title": "기말고사 실시 12월14일 (화)", "raw_reference": "Week 16",
+         "resolved_date": None, "needs_review": True},
+        # 다른 시험 (중간, 다른 주차) — 유지
+        {"type": "midterm", "title": "중간고사", "raw_reference": "Week 8",
+         "resolved_date": None, "needs_review": True},
+    ]
+    out = _dedup_events(frags, by_date_sig=True)
+    finals = [e for e in out if e["type"] == "final"]
+    assert len(finals) == 1 and finals[0]["title"] == "기말고사"   # 조각+교차출처 → 1, 깨끗한 base 제목
+    assert any(e["type"] == "midterm" for e in out)               # 다른 시험은 유지
+    assert all("_char_start" not in e for e in out)               # 임시 위치 필드 제거
+
+
+def test_distinct_exams_not_merged():
+    from syllabus_classifier.extract.field_router import _dedup_events
+    # 다른 주차의 두 퀴즈(인접하지만 날짜서명 다름)는 병합 안 됨 — 오병합 방지
+    out = _dedup_events([
+        {"type": "quiz", "title": "퀴즈", "raw_reference": "3주차",
+         "resolved_date": None, "needs_review": True, "_char_start": 0, "_page": 1},
+        {"type": "quiz", "title": "퀴즈", "raw_reference": "6주차",
+         "resolved_date": None, "needs_review": True, "_char_start": 10, "_page": 1},
+    ], by_date_sig=True)
+    assert len(out) == 2
+
+
 # --- 과목명 개행/마커 정규화 + 한/영 분리 (섀도 실측: 표 wrap 된 제목) ---
 def test_title_collapses_newlines_and_markers():
     from syllabus_classifier.extract.rule_fields import _derive_titles
@@ -104,6 +140,17 @@ def test_title_korean_only_unchanged():
     # 한국어 단독 제목은 그대로 (회귀 방지)
     assert _derive_titles("미분적분학과벡터해석(1)") == ("미분적분학과벡터해석(1)", None)
     assert _derive_titles("미적분학") == ("미적분학", None)
+
+
+def test_title_rejects_timestamp_metadata():
+    from syllabus_classifier.extract.rule_fields import _looks_like_title
+    # 연세 포털: '최종수정일 2014-…' 타임스탬프가 제목으로 새던 것 차단
+    assert not _looks_like_title("00:14 최종수정일 2014-12-27 09:01:23")
+    assert not _looks_like_title("최초등록일 2015-07-01 15:21:52")
+    assert not _looks_like_title("2014-12-27")
+    # 진짜 제목은 통과
+    assert _looks_like_title("미분적분학과벡터해석(1)")
+    assert _looks_like_title("식품분석및실험")
 
 
 # --- 포털 URL 도메인으로 학교 감지 (깨진 export 에서 학교명이 소실돼도 URL 은 남을 때) ---

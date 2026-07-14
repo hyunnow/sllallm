@@ -483,10 +483,29 @@ def _derive_titles(title: Optional[str]) -> "tuple[Optional[str], Optional[str]]
     return title_ko, title_en
 
 
+def _looks_like_title(v: Optional[str]) -> bool:
+    """제목 후보 sanity — 타임스탬프/수정이력 메타데이터는 과목명이 아니다.
+    연세 포털 export 는 '교과목명' 라벨 이웃 셀에 '최종수정일 2014-…' 가 붙어 그게
+    제목으로 새던 것을 막는다 (2026-07 섀도 실측)."""
+    v = (v or "").strip()
+    if not (2 <= len(v) <= 60):
+        return False
+    return not re.search(r"최종수정일|최초등록일|\d{1,2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2}", v)
+
+
+def _labeled_title(doc) -> Optional[str]:
+    """제목 라벨 값 중 '제목처럼 생긴' 첫 값 — 타임스탬프/메타데이터 셀은 건너뛴다."""
+    for cand in find_labeled_values(doc, "title"):
+        c = cut_at_next_label(cand)
+        if c and not _is_any_label(c) and _looks_like_title(c):
+            return c
+    return None
+
+
 def extract_rule_fields(doc) -> dict:
     """One pass over a NormalizedDoc -> flat {field_path: value} for the rule method."""
     school, campus = extract_school_campus(doc)
-    raw_title = labeled_value(doc, "title")
+    raw_title = _labeled_title(doc)
     if not raw_title:
         # 폴백: 콜론 없거나 값이 다음 줄인 포털/KOCW형 "교과목명 <값>" / "교과목명\n<값>"
         # (이화 '교과목명\n시스템소프트웨어', 한양 '교과목명 (영문)FLUID…'). title 전용·가드.
