@@ -52,6 +52,32 @@ def test_inline_title_rejects_section_word():
     assert _inline_label_title(doc_from("교과목 목표\n1. ...")) is None
 
 
+def test_portal_scrape_chrome_not_taken_as_title():
+    # 실코퍼스 검증: 한양 웹스크랩 포털 export 상단이 UI 툴바·네비 탭 나열 →
+    # 헤딩 폴백이 'Korean English Excel Print'/'Lecture' 를 제목으로 confident-wrong
+    # 하게 잡던 것. 포털 크롬 감지 시 헤딩 추론 끔(→ 라벨/인라인 실패면 OpenAI 폴백).
+    d = doc_from("Korean English Excel Print\nAttach files\n조회된 데이터가 없습니다.\n"
+                 "Lecture\nintroduction\nSyllabus\nSchool year 2026 first semester")
+    assert _heading_title(d) is None
+
+
+def test_junk_banner_titles_rejected():
+    # 프로그램 배너·문서제목·UI 라벨은 제목 아님 → fail-closed
+    for junk in ("2026 YONSEI INTERNATIONAL SUMMER SCHOOL", "STERN SCHOOL OF BUSINESS",
+                 "Syllabus (1st Semester, 2026)", "Spring 2026", "Course Information",
+                 "4-WEEK PROGRAM", "카테고리"):
+        # 배너 + 메타데이터 한 줄뿐(제목 후보 없음) → 헤딩 폴백이 배너를 취하지 않고 None(폴백)
+        d = doc_from(f"{junk}\n2026학년도 1학기 · 3학점 · 담당교수 홍길동")
+        f = extract_rule_fields(d)
+        assert f["course.title_ko"] is None and f["course.title_en"] is None, junk
+
+
+def test_bilingual_and_numbered_title_prefix_stripped():
+    from syllabus_classifier.extract.rule_fields import _clean_title
+    assert _clean_title("(국문) 반도체공학 I") == "반도체공학 I"
+    assert _clean_title("1. Introduction to Education") == "Introduction to Education"
+
+
 def test_heading_title_rejects_doctype_and_school():
     # 문서제목/학교/학과 줄은 제목 후보에서 배제, 진짜 제목만
     d = doc_from("2025학년도 1학기 · 명지대학교\n강의 계획 및 진도표\n"

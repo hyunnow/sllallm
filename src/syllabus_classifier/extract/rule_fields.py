@@ -549,6 +549,8 @@ def _clean_title(s: Optional[str]) -> Optional[str]:
         return s
     s = re.sub(r"\s+", " ", s).strip()
     s = re.sub(r"^[\*•▪◦·\-–—]+\s*", "", s).strip()
+    s = re.sub(r"^[\(（]\s*(?:국문|영문|한글|공통|국|영)\s*[\)）]\s*", "", s).strip()   # 이중언어/공통 마커 접두
+    s = re.sub(r"^\d{1,2}\.\s+(?=[A-Za-z가-힣])", "", s).strip()                    # 번호 매김 접두 'N. '
     return s or None
 
 
@@ -601,7 +603,8 @@ _INLINE_TITLE = re.compile(
 # 실제 과목명은 이런 단어만으로 이뤄지지 않는다 (정밀도 우선).
 _SECTION_WORDS = frozenset(
     "목표 개요 소개 설명 내용 정보 요약 구성 특징 목적 평가 교재 참고 참고문헌 계획 "
-    "진도 진도계획 방법 방침 안내 유의사항 비고 기타 정책 운영 상세 조회".split())
+    "진도 진도계획 방법 방침 안내 유의사항 비고 기타 정책 운영 상세 조회 "
+    "학습목표 수업목표 강의목표 교과목표 학습개요 강의개요 교과개요 수업개요 강의내용 교과내용".split())
 
 
 def _is_section_word(cand: str) -> bool:
@@ -613,7 +616,7 @@ def _inline_label_title(doc) -> Optional[str]:
     for m in _INLINE_TITLE.finditer(doc.full_text):
         cand = cut_at_next_label(m.group(1).strip())
         if (cand and not _is_any_label(cand) and not _is_section_word(cand)
-                and not _DOCTYPE_TITLE.search(cand)
+                and not _DOCTYPE_TITLE.search(cand) and not _JUNK_TITLE.search(cand)
                 and _looks_like_title(cand) and re.search(r"[가-힣A-Za-z]", cand)):
             return cand
     return None
@@ -630,11 +633,32 @@ _META_LINE = re.compile(
     r"학년도|학기|학점|이수구분|담당교수|담당교원|교강사|@|https?://"
     r"|강좌번호|학수번호|교과목?번호|\d{4}\s*[.\-/]\s*\d", re.I)
 _DEPT_ONLY = re.compile(r"^\S{2,}(?:대학|대학원|학과|학부|계열|전공)$")
+# 포털/웹스크랩 export 의 UI 크롬·네비·프로그램 배너·문서제목 — 라벨 없는 폴백이 이걸
+# 제목으로 confident-wrong 하게 잡던 것 차단(실코퍼스 검증: 한양 302건 'Korean English
+# Excel Print', 연세 YISS 프로그램 배너 등). 걸리면 None → OpenAI 폴백(fail-closed).
+_JUNK_TITLE = re.compile(
+    r"\b(?:print|excel|export|attach|login|logout|category|search|download|home|menu)\b"
+    r"|인쇄|저장|목록|카테고리|첨부|조회|다운로드"
+    r"|\bsyllabus\b|summer\s*school|winter\s*school|school\s*of\s*business|international\s*sum"
+    r"|\bprogram\b|(?:cou[r]?se|class)\s+(?:information|outline|schedule)|subject\s+to\s+change"
+    r"|time\s+place\s+lecturer|year\s*[-–]\s*semester|^\(?\s*course\s*\)?$"   # 헤더/라벨/조각
+    r"|^[\(（]?\s*(?:spring|summer|fall|autumn|winter)\s+(?:semester\s+)?20\d{2}\s*[\)）]?\s*$"
+    r"|^\(?\s*(?:국문|영문|en|ko)\s*\)?$", re.I)
+
+
+# 포털/웹스크랩 export 마커 — 상단이 툴바·네비 탭 나열이라 '진짜 문서 헤더' 구조가 없다.
+# 이런 문서에서 헤딩 추론은 네비 탭(Lecture·introduction…)을 제목으로 오인하므로 아예
+# 끈다(→ 라벨/인라인 실패 시 OpenAI 폴백). 단어 블로클리스트로는 못 잡는 구조적 케이스.
+_PORTAL_CHROME = re.compile(
+    r"Korean\s+English\s+Excel|Attach\s+files?|조회를?\s*하지\s*않|조회된\s*데이터가\s*없", re.I)
 
 
 def _heading_title(doc, school: Optional[str] = None) -> Optional[str]:
+    text = doc.full_text
+    if _PORTAL_CHROME.search(text[:400]):
+        return None                                  # 포털 스크랩 — 헤딩 추론 금지(fail-closed)
     sn = _norm(school) if school else None
-    lines = [l.strip() for l in doc.full_text.split("\n") if l.strip()]
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
     for ln in lines[:8]:
         c = re.sub(r"^[\*•▪◦·\-–—=~\s]+", "", ln)
         c = re.sub(r"[=~]+\s*$", "", c).strip()
@@ -646,7 +670,7 @@ def _heading_title(doc, school: Optional[str] = None) -> Optional[str]:
             continue
         if _DOCTYPE_TITLE.search(c) or _SCHOOL_LINE.search(c) or _META_LINE.search(c):
             continue
-        if _DEPT_ONLY.match(c) or _is_any_label(c) or _is_section_word(c):
+        if _DEPT_ONLY.match(c) or _is_any_label(c) or _is_section_word(c) or _JUNK_TITLE.search(c):
             continue
         if sn and sn in _norm(c):                    # 학교명 그 자체
             continue
@@ -692,6 +716,8 @@ def extract_rule_fields(doc) -> dict:
     #  1) 라벨 인접값(표/콜론) 2) 콜론없는 인라인 라벨 '과목 <값>' 3) 라벨 없는 상단 헤딩.
     # 라벨형이 잡히는 문서엔 2·3 이 발동하지 않아 무회귀.
     raw_title = _labeled_title(doc) or _inline_label_title(doc) or _heading_title(doc, school)
+    if raw_title and _JUNK_TITLE.search(raw_title):
+        raw_title = None                             # 포털 UI 크롬/배너 → fail-closed(OpenAI 폴백)
     title, title_code = split_code_from_title(raw_title) if raw_title else (None, None)
     title_ko, title_en = _derive_titles(title)
     credits_v = labeled_value(doc, "credits")
