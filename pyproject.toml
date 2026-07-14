@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "syllabus-classifier"
-version = "0.1.0"
+version = "0.2.0"
 description = "Syllabus time-candidate classifier — keep office hours, exams, and deadlines out of class_schedule."
 readme = "README.md"
 requires-python = ">=3.9"

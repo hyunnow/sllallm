@@ -441,6 +441,15 @@ def extract_rule_fields(doc) -> dict:
     """One pass over a NormalizedDoc -> flat {field_path: value} for the rule method."""
     school, campus = extract_school_campus(doc)
     raw_title = labeled_value(doc, "title")
+    if not raw_title:
+        # 폴백: 콜론 없거나 값이 다음 줄인 포털/KOCW형 "교과목명 <값>" / "교과목명\n<값>"
+        # (이화 '교과목명\n시스템소프트웨어', 한양 '교과목명 (영문)FLUID…'). title 전용·가드.
+        m = re.search(r"교\s*과\s*목\s*명\s*(?:\((?:국문|영문)\))?\s*[:：]?[ \t]*\n?[ \t]*([^\n]{1,50})",
+                      doc.full_text)
+        if m:
+            cand = cut_at_next_label(m.group(1).strip())
+            if cand and not _is_any_label(cand) and re.search(r"[가-힣A-Za-z]", cand):
+                raw_title = cand
     title, title_code = split_code_from_title(raw_title) if raw_title else (None, None)
     title_ko = title_en = None
     if title:

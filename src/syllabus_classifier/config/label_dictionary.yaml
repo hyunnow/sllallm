@@ -21,7 +21,7 @@ labels:
   office_hours: ["면담시간", "상담시간", "면담 시간", "Office Hours", "오피스아워"]
   ta: ["조교", "담당조교", "T/A", "TA", "Teaching Assistant"]
   location: ["강의실", "강의 장소", "수업장소", "Classroom", "Room", "Location"]
-  class_time: ["강의시간", "수업시간", "강의 시간", "Class Time", "Class Hours", "Lecture Time", "요일/시간"]
+  class_time: ["강의시간", "수업시간", "강의 시간", "강의실(시간)", "강의실/시간", "강의실 (시간)", "수업 요일/시간", "Class Time", "Class Hours", "Lecture Time", "요일/시간"]
   objectives: ["수업목표", "학습목표", "교육목표", "강의목표", "Course Objectives", "Learning Objectives"]
   description: ["교과목개요", "과목소개", "강의개요", "교과목 소개", "수업개요", "Course Description", "Overview"]
   prerequisites: ["선수과목", "선수 과목", "선이수과목", "Prerequisites", "Prerequisite"]

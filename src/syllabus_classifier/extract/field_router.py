@@ -19,7 +19,10 @@ from .llm_fields import extract_llm_fields
 from .rule_fields import extract_rule_fields, labeled_value
 
 _TBA = re.compile(r"\bTBA\b|미정|추후\s*(?:공지|안내)", re.IGNORECASE)
-_ASYNC = re.compile(r"사이버\s*강의|온라인\s*강의|비대면|원격\s*수업|동영상\s*강의|e-?learning|OCW|KOCW", re.IGNORECASE)
+# async 는 배달 방식의 **긍정 근거**가 있을 때만. OCW/KOCW 는 출처(오픈코스웨어)일 뿐
+# 배달 방식이 아니다 — 이걸 넣으면 KOCW 코퍼스 전체가 async 로 오탐돼 교시표 KB 가
+# 아예 호출되지 않았다(2026-07 이식 3단계에서 실측). 그래서 제거한다.
+_ASYNC = re.compile(r"사이버\s*강의|온라인\s*강의|비대면|원격\s*수업|동영상\s*강의|e-?learning", re.IGNORECASE)
 _EXAM_TYPE = [("midterm", re.compile(r"중간\s*고사|중간\s*시험|중간|midterm(?:\s+exam)?", re.I)),
               ("final", re.compile(r"기말\s*고사|기말\s*시험|기말|final(?:\s+exam)?", re.I)),
               ("quiz", re.compile(r"퀴즈|quiz(?:\s*#?\d+)?", re.I))]
@@ -107,11 +110,16 @@ def extract_subsystem(doc, classifier=None) -> dict:
     raw_time = labeled_value(doc, "class_time", cut=False)
     if raw_time and _TBA.search(raw_time):
         status = "tba"
-    elif class_events:
+    elif class_events or raw_time:
+        # 시간 근거가 있으면 present — 미해석(교시표 miss 등)은 compiler 가 needs_review 로.
+        # 시간이 있는데 async 로 내려가 교시 KB 를 건너뛰던 구조 버그를 막는다.
         status = "present"
     elif _ASYNC.search(doc.full_text):
+        # 시간 근거가 없고 배달 방식의 긍정 근거가 있을 때만 async.
         status = "async"
     else:
+        # 근거 없음 — async 로 단정하지 않고 not_specified 로 두고 needs_review 로 표면화
+        # (compiler 에서 "수업시간 미상" review 생성). 이식 3단계 사용자 지시.
         status = "not_specified"
 
     # Phase 4: the weekly-plan table — the main home of exams/assignments (v6 §0).

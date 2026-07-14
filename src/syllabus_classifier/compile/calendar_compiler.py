@@ -162,6 +162,9 @@ def compile_record(record: dict, kb: Optional[KBResolver] = None,
                     f"{title} (수업)",
                     f"학사일정 미확보({cal_key or '키 없음'}) — 반복 경계(UNTIL)·휴강 확정 불가, "
                     "weekly_timetable 참조", slots=[f"{d} {s}-{e}" for d, s, e in slots]))
+    elif status == "not_specified":
+        # 근거 없음을 async 로 단정하지 않고 표면화 — "우리가 못 찾았다"를 솔직히 needs_review.
+        review.append(_review(f"{title} (수업)", "수업시간 미상 — 문서에서 추출 근거 없음"))
 
     # --- 면담시간 (기본 미컴파일, v3 §9) -----------------------------------
     if compile_office_hours:
