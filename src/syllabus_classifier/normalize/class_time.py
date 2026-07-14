@@ -129,7 +129,13 @@ def to_notation(raw: str, *, timetable_key: Optional[str] = None, kb=None) -> Op
         seg = seg.strip()
         if not seg:
             continue
-        days = _segment_days(seg) or pending_days
+        # "수, 금 15:00~16:15" 처럼 앞의 요일-only 세그먼트가 뒤 세그먼트의 시각을 공유 →
+        # pending 요일을 이번 세그먼트 요일에 합친다 (한쪽만 나오던 버그).
+        seg_days = _segment_days(seg)
+        if seg_days and pending_days:
+            days = pending_days + [d for d in seg_days if d not in pending_days]
+        else:
+            days = seg_days or pending_days
         if not days:
             return None                                  # a segment we can't place
 

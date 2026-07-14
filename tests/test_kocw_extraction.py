@@ -42,6 +42,21 @@ def test_bare_periods_abstain_without_kb():
     assert to_notation("화6, 목3,4") is None
 
 
+def test_comma_days_share_trailing_time():
+    # "수, 금 15:00~16:15" 는 수·금 둘 다 그 시각 (한쪽만 나오던 버그)
+    assert to_notation("수, 금 15:00~16:15") == "Wed 15:00-16:15 ; Fri 15:00-16:15"
+    assert to_notation("월, 수 10:30-11:45") == "Mon 10:30-11:45 ; Wed 10:30-11:45"
+
+
+def test_ai_syllabus_labels_present():
+    # 생성 코퍼스/실제 강의계획서에서 흔한 라벨 어휘 커버 (교과명·강좌명·요일 및 시간·시간표)
+    from syllabus_classifier.common.config import load_config
+    labels = load_config("label_dictionary.yaml")["labels"]
+    assert "교과명" in labels["title"] and "강좌명" in labels["title"]
+    assert "요일 및 시간" in labels["class_time"] and "시간표" in labels["class_time"]
+    assert "강좌번호" in labels["course_code"]
+
+
 def test_existing_formats_unregressed():
     assert to_notation("월2,3교시", timetable_key="yonsei_seoul", kb=_KB) == "Mon 10:00-11:50"
     assert to_notation("화 14:00-15:00") == "Tue 14:00-15:00"
