@@ -246,24 +246,42 @@ def _school_from_email_domain(text: str, cfg) -> Optional[dict]:
     evidence (@unist.ac.kr 도메인 → UNIST). gmail류 공용 도메인은 사전에 없어
     자연 배제; 서로 다른 학교 도메인이 섞이면 abstain."""
     doc_domains = {m.group(0).rsplit("@", 1)[1].lower() for m in _EMAIL.finditer(text)}
+    return _school_from_domains(doc_domains, cfg)
+
+
+_URL = re.compile(r"https?://[^\s/]+", re.IGNORECASE)
+
+
+def _school_from_url_domain(text: str, cfg) -> Optional[dict]:
+    """포털/아카이브 URL 호스트로 학교 확정 (ysweb.yonsei.ac.kr → 연세). 깨진 PDF 에서
+    학교명이 뭉개져도 소스 URL 은 남는 경우가 많다 (이식 3단계 실측 — 연세 포털 export).
+    이메일 도메인과 동일하게 서로 다른 학교가 섞이면 abstain."""
+    hosts = {m.group(0).split("://", 1)[1].split(":")[0].lower() for m in _URL.finditer(text)}
+    return _school_from_domains(hosts, cfg)
+
+
+def _school_from_domains(hosts: "set[str]", cfg) -> Optional[dict]:
+    """도메인/호스트 집합 → 유일하게 매치되는 학교 entry (없거나 복수면 None)."""
     matched = {}
     for entry in cfg["schools"].values():
         for d in entry.get("domains", []):
-            if any(dom == d or dom.endswith("." + d) for dom in doc_domains):
+            if any(h == d or h.endswith("." + d) for h in hosts):
                 matched[entry["canonical"]] = entry
     return next(iter(matched.values())) if len(matched) == 1 else None
 
 
 def extract_school_campus(doc) -> tuple[Optional[str], Optional[str]]:
     """School only from the dictionary. 증거 우선순위: 본문 > 이메일 도메인 >
-    수집 파일명(doc_id). 파일명 폴백은 kocw류 아카이브(파일명에 학교가 박힌 명명
-    규칙, 본문엔 학교명 없음) 때문에 존재 — 2026-07-12 사용자 최종 판정으로 유지
-    (한 차례 철회했다가 파일명 출처 확인 후 복원)."""
+    포털 URL 도메인 > 수집 파일명(doc_id). 파일명 폴백은 kocw류 아카이브(파일명에
+    학교가 박힌 명명 규칙, 본문엔 학교명 없음) 때문에 존재 — 2026-07-12 사용자 최종
+    판정으로 유지. URL 도메인은 깨진 포털 export(학교명 뭉개짐)에서 학교 복구용."""
     cfg = load_config("school_dictionary.yaml")
     text = doc.full_text
     entry, _, _ = _dict_school_hits(text, cfg)
     if entry is None:
         entry = _school_from_email_domain(text, cfg)
+    if entry is None:
+        entry = _school_from_url_domain(text, cfg)          # 포털 URL 도메인 (깨진 PDF 복구)
     if entry is None:
         entry, _, _ = _dict_school_hits(getattr(doc, "doc_id", "") or "", cfg)
     if entry is None:

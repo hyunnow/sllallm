@@ -80,3 +80,15 @@ def test_async_still_emits_no_class_events():
     out = compile_record(_record("async"), kb=_KB)
     assert out["weekly_timetable"] == []
     assert not any("수업" in e.get("review_reason", "") for e in out["needs_review_events"])
+
+
+# --- 포털 URL 도메인으로 학교 감지 (깨진 export 에서 학교명이 소실돼도 URL 은 남을 때) ---
+def test_school_from_portal_url_domain():
+    from syllabus_classifier.common.config import load_config
+    from syllabus_classifier.extract.rule_fields import _school_from_url_domain
+
+    cfg = load_config("school_dictionary.yaml")
+    e = _school_from_url_domain("조회 http://ysweb.yonsei.ac.kr:8888/curri120601 찾기", cfg)
+    assert e and e["canonical"] == "연세대학교"
+    # 도메인 신호가 없으면 None (오탐 없음)
+    assert _school_from_url_domain("학교명도 URL 도 없는 본문", cfg) is None
