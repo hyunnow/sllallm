@@ -75,7 +75,18 @@ def test_junk_banner_titles_rejected():
 def test_bilingual_and_numbered_title_prefix_stripped():
     from syllabus_classifier.extract.rule_fields import _clean_title
     assert _clean_title("(국문) 반도체공학 I") == "반도체공학 I"
+    assert _clean_title("<국문> 강화학습") == "강화학습"          # 꺾쇠 마커도
     assert _clean_title("1. Introduction to Education") == "Introduction to Education"
+
+
+def test_mangled_table_label_fragments_rejected():
+    # 실코퍼스(추가 폴더 동국대): 뭉개진 표에서 라벨/강의실/번호섹션 조각이 제목으로
+    # 새던 것 — 전부 fail-closed(None → OpenAI 폴백).
+    for junk in ("여부 세부 유형", "Classification)", "(혜화관 207-604 강의실)",
+                 "1. 교과목표", "평가내용", "이수 여부"):
+        d = doc_from(f"{junk}\n2026학년도 1학기 · 3학점 · 담당교수 김철수")
+        f = extract_rule_fields(d)
+        assert f["course.title_ko"] is None and f["course.title_en"] is None, junk
 
 
 def test_heading_title_rejects_doctype_and_school():

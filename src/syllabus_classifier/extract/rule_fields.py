@@ -549,7 +549,7 @@ def _clean_title(s: Optional[str]) -> Optional[str]:
         return s
     s = re.sub(r"\s+", " ", s).strip()
     s = re.sub(r"^[\*•▪◦·\-–—]+\s*", "", s).strip()
-    s = re.sub(r"^[\(（]\s*(?:국문|영문|한글|공통|국|영)\s*[\)）]\s*", "", s).strip()   # 이중언어/공통 마커 접두
+    s = re.sub(r"^[\(（<＜]\s*(?:국문|영문|한글|공통|국|영)\s*[\)）>＞]\s*", "", s).strip()   # (국문)·<국문> 마커 접두
     s = re.sub(r"^\d{1,2}\.\s+(?=[A-Za-z가-힣])", "", s).strip()                    # 번호 매김 접두 'N. '
     return s or None
 
@@ -585,7 +585,8 @@ def _labeled_title(doc) -> Optional[str]:
     """제목 라벨 값 중 '제목처럼 생긴' 첫 값 — 타임스탬프/메타데이터/문서제목 셀은 건너뛴다."""
     for cand in find_labeled_values(doc, "title"):
         c = cut_at_next_label(cand)
-        if c and not _is_any_label(c) and _looks_like_title(c) and not _DOCTYPE_TITLE.search(c):
+        if (c and not _is_any_label(c) and _looks_like_title(c)
+                and not _DOCTYPE_TITLE.search(c) and not _is_section_word(c)):
             return c
     return None
 
@@ -603,8 +604,9 @@ _INLINE_TITLE = re.compile(
 # 실제 과목명은 이런 단어만으로 이뤄지지 않는다 (정밀도 우선).
 _SECTION_WORDS = frozenset(
     "목표 개요 소개 설명 내용 정보 요약 구성 특징 목적 평가 교재 참고 참고문헌 계획 "
-    "진도 진도계획 방법 방침 안내 유의사항 비고 기타 정책 운영 상세 조회 "
-    "학습목표 수업목표 강의목표 교과목표 학습개요 강의개요 교과개요 수업개요 강의내용 교과내용".split())
+    "진도 진도계획 방법 방침 안내 유의사항 비고 기타 정책 운영 상세 조회 여부 세부 유형 "
+    "학습목표 수업목표 강의목표 교과목표 학습개요 강의개요 교과개요 수업개요 강의내용 교과내용 "
+    "평가내용 평가방법 수업내용 강의방법 성적평가 교과내용 세부유형 이수여부".split())
 
 
 def _is_section_word(cand: str) -> bool:
@@ -641,8 +643,10 @@ _JUNK_TITLE = re.compile(
     r"|인쇄|저장|목록|카테고리|첨부|조회|다운로드"
     r"|\bsyllabus\b|summer\s*school|winter\s*school|school\s*of\s*business|international\s*sum"
     r"|\bprogram\b|(?:cou[r]?se|class)\s+(?:information|outline|schedule)|subject\s+to\s+change"
+    r"|\bclassification\)?|이수\s*여부|세부\s*유형|여부\s+세부|강의실|강의동"   # 뭉개진 표의 라벨/강의실 조각
     r"|time\s+place\s+lecturer|year\s*[-–]\s*semester|^\(?\s*course\s*\)?$"   # 헤더/라벨/조각
     r"|^[\(（]?\s*(?:spring|summer|fall|autumn|winter)\s+(?:semester\s+)?20\d{2}\s*[\)）]?\s*$"
+    r"|\b\d(?:st|nd|rd|th)\s+semester\b|^[\(（]?\s*20\d{2}\s+\d(?:st|nd|rd|th)\s+semester"
     r"|^\(?\s*(?:국문|영문|en|ko)\s*\)?$", re.I)
 
 
@@ -661,6 +665,7 @@ def _heading_title(doc, school: Optional[str] = None) -> Optional[str]:
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     for ln in lines[:8]:
         c = re.sub(r"^[\*•▪◦·\-–—=~\s]+", "", ln)
+        c = re.sub(r"^\d{1,2}\.\s+", "", c)          # 번호 접두 'N. ' — 섹션어 체크가 먹도록
         c = re.sub(r"[=~]+\s*$", "", c).strip()
         if not (2 <= len(c) <= 40):
             continue
