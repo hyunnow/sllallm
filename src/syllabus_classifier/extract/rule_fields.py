@@ -547,6 +547,7 @@ def _clean_title(s: Optional[str]) -> Optional[str]:
     'BUSINESS MANAGEMENT' 로 편다 (2026-07 섀도 실측)."""
     if not s:
         return s
+    s = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", s)   # PDF 제어문자 제거(\x01 등)
     s = re.sub(r"\s+", " ", s).strip()
     s = re.sub(r"^[\*•▪◦·\-–—]+\s*", "", s).strip()
     s = re.sub(r"^[\(（<＜]\s*(?:국문|영문|한글|공통|국|영)\s*[\)）>＞]\s*", "", s).strip()   # (국문)·<국문> 마커 접두
@@ -644,6 +645,7 @@ _JUNK_TITLE = re.compile(
     r"|\bsyllabus\b|summer\s*school|winter\s*school|school\s*of\s*business|international\s*sum"
     r"|\bprogram\b|(?:cou[r]?se|class)\s+(?:information|outline|schedule)|subject\s+to\s+change"
     r"|\bclassification\)?|이수\s*여부|세부\s*유형|여부\s+세부|강의실|강의동"   # 뭉개진 표의 라벨/강의실 조각
+    r"|course\s+title|course\s+no\b|^[A-Za-z]?\d{2,4}\s*[\(（]|[가-힣]{2,5}관\s*\d"  # 라벨·강의실코드·건물+호"
     r"|time\s+place\s+lecturer|year\s*[-–]\s*semester|^\(?\s*course\s*\)?$"   # 헤더/라벨/조각
     r"|^[\(（]?\s*(?:spring|summer|fall|autumn|winter)\s+(?:semester\s+)?20\d{2}\s*[\)）]?\s*$"
     r"|\b\d(?:st|nd|rd|th)\s+semester\b|^[\(（]?\s*20\d{2}\s+\d(?:st|nd|rd|th)\s+semester"
@@ -664,7 +666,8 @@ def _heading_title(doc, school: Optional[str] = None) -> Optional[str]:
     sn = _norm(school) if school else None
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     for ln in lines[:8]:
-        c = re.sub(r"^[\*•▪◦·\-–—=~\s]+", "", ln)
+        c = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", ln)   # PDF 제어문자(\x01)
+        c = re.sub(r"^[\*•▪◦·\-–—=~\s]+", "", c)
         c = re.sub(r"^\d{1,2}\.\s+", "", c)          # 번호 접두 'N. ' — 섹션어 체크가 먹도록
         c = re.sub(r"[=~]+\s*$", "", c).strip()
         if not (2 <= len(c) <= 40):

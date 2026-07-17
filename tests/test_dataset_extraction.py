@@ -83,7 +83,8 @@ def test_mangled_table_label_fragments_rejected():
     # 실코퍼스(추가 폴더 동국대): 뭉개진 표에서 라벨/강의실/번호섹션 조각이 제목으로
     # 새던 것 — 전부 fail-closed(None → OpenAI 폴백).
     for junk in ("여부 세부 유형", "Classification)", "(혜화관 207-604 강의실)",
-                 "1. 교과목표", "평가내용", "이수 여부"):
+                 "1. 교과목표", "평가내용", "이수 여부",
+                 "K309(학술문화관 102-309)", "202(계산관)", "Course Title", "\x01 평가내용"):
         d = doc_from(f"{junk}\n2026학년도 1학기 · 3학점 · 담당교수 김철수")
         f = extract_rule_fields(d)
         assert f["course.title_ko"] is None and f["course.title_en"] is None, junk

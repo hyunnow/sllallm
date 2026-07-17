@@ -125,7 +125,10 @@ def to_notation(raw: str, *, timetable_key: Optional[str] = None, kb=None) -> Op
     # period lists and "10:30,11:45"-style enumerations must stay intact.
     # '/' 는 요일-시각 그룹 구분자("월 12:00~13:15 / 목 14:00~15:50", "화2교시 / 목 …").
     # 시각/방번호엔 '/'가 안 쓰여 안전. "월/수 11:00" 는 pending_days 로 시각 공유 유지.
-    segments = re.split(r"[;\n/]|\s및\s|,(?=\s*[^\d\s])", text)
+    # 마지막 대안: 공백으로만 구분된 요일-시각 그룹("월10:30~11:45 목13:30~14:45")도 쪼갠다
+    # — 안 쪼개면 한 세그먼트로 뭉쳐 첫 시각을 두 요일에 잘못 복사(목이 10:30 되던 버그).
+    # 앞이 숫자(시각 끝)+공백, 뒤가 요일+숫자일 때만(요일공유 "수, 금 15:00" 는 미분리).
+    segments = re.split(r"[;\n/]|\s및\s|,(?=\s*[^\d\s])|(?<=\d)\s+(?=[월화수목금토일]\s*\d)", text)
 
     for seg in segments:
         seg = seg.strip()

@@ -50,6 +50,15 @@ def test_unconvertible_abstains():
     assert to_notation("") is None
 
 
+def test_space_separated_daytime_groups_keep_own_times():
+    # b-8 실검증(#30 계명대): "월10:30~11:45 목13:30~14:45" 를 한 세그먼트로 뭉쳐 첫 시각을
+    # 두 요일에 복사하던 버그 → 각 요일이 자기 시각을 갖도록 공백 분리.
+    assert to_notation("월10:30~11:45 목13:30~14:45(백224)") == "Mon 10:30-11:45 ; Thu 13:30-14:45"
+    assert to_notation("화09:00~10:15 목15:00~16:15") == "Tue 09:00-10:15 ; Thu 15:00-16:15"
+    # 요일공유("수, 금 15:00")는 계속 미분리(양쪽 15:00)
+    assert to_notation("수, 금 15:00~16:15") == "Wed 15:00-16:15 ; Fri 15:00-16:15"
+
+
 def test_end_before_start_meridiem_recovery():
     # "9:00-1:40pm": end parses as 13:40 via pm; start stays 09:00
     assert to_notation("Mon 9:00am-1:40pm") == "Mon 09:00-13:40"
