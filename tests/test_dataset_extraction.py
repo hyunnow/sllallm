@@ -222,6 +222,44 @@ def test_drop_dateless_exam_when_dated_exists():
     assert _drop_dateless_when_dated(only_dateless) == only_dateless
 
 
+def test_year_snapped_to_header_academic_year():
+    # 실사용 요청: 헤더 학년도(2026)가 있는데 시험 날짜가 '2025-07-20'(오래된 템플릿 오타)
+    # 이면 학년도로 스냅 → 2026-07-20 확정. 뒤처진(-1) 경우만, 겨울학기 +1 은 미보정.
+    from syllabus_classifier.compile import compile_record
+    from syllabus_classifier.record.schema import empty_record
+    rec = empty_record()
+    rec["meta"]["academic_year"] = 2026
+    rec["meta"]["term"] = "여름"
+    rec["course"]["title_ko"] = "스페인어"
+    rec["schedule"]["exams"] = [
+        {"title": "기말고사", "type": "final", "resolved_date": "2025-07-20",
+         "date_kind": "absolute", "needs_review": False, "raw_reference": "2025.07.20"},
+        {"title": "중간고사", "type": "midterm", "resolved_date": "2025-07-08",
+         "date_kind": "absolute", "needs_review": False, "raw_reference": "2025.07.08"},
+    ]
+    comp = compile_record(rec, current_year=2026)
+    dates = {e["summary"]: e["dtstart"] for e in comp["confirmed_events"] if e["kind"] == "exam"}
+    assert dates.get("기말고사") == "2026-07-20"
+    assert dates.get("중간고사") == "2026-07-08"
+
+
+def test_year_not_snapped_when_matches_or_ahead():
+    # 학년도와 같거나(정상) 앞선(겨울학기 다음해 넘어감) 연도는 건드리지 않는다.
+    from syllabus_classifier.compile import compile_record
+    from syllabus_classifier.record.schema import empty_record
+    rec = empty_record()
+    rec["meta"]["academic_year"] = 2025
+    rec["meta"]["term"] = "겨울"
+    rec["course"]["title_ko"] = "화학"
+    rec["schedule"]["exams"] = [
+        {"title": "기말고사", "type": "final", "resolved_date": "2026-01-15",   # 겨울 다음해 = 정상
+         "date_kind": "absolute", "needs_review": False, "raw_reference": "2026.01.15"},
+    ]
+    comp = compile_record(rec, current_year=2025)
+    dates = [e["dtstart"] for e in comp["confirmed_events"] if e["kind"] == "exam"]
+    assert "2026-01-15" in dates          # +1 은 그대로
+
+
 def test_collapse_dateless_same_title_exams():
     ev = [{"type": "midterm", "title": "중간고사", "resolved_date": None} for _ in range(6)]
     ev += [{"type": "final", "title": "기말고사", "resolved_date": None} for _ in range(3)]

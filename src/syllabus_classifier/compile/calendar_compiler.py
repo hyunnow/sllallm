@@ -206,6 +206,17 @@ def compile_record(record: dict, kb: Optional[KBResolver] = None,
                                       kind=ev_kind, raw_reference=e.get("raw_reference")))
                 continue
             rd = e.get("resolved_date")
+            # 헤더 학년도가 있는데 명시 날짜 연도가 딱 1년 뒤처지면(오래된 템플릿 오타:
+            # '2026학년도' 문서인데 시험이 '2025-07-20') 학년도로 스냅한다. 겨울학기가
+            # 다음 해로 넘어가는 정상(학년도+1)은 건드리지 않고, 뒤처진(-1) 경우만 보정.
+            hy = meta.get("academic_year")
+            if rd and hy:
+                try:
+                    if int(str(rd)[:4]) == int(hy) - 1:   # 날짜 연도가 학년도보다 딱 1년 뒤 → 스냅
+                        rd = f"{int(hy)}{str(rd)[4:]}"
+                        e["resolved_date"] = rd
+                except (ValueError, TypeError):
+                    pass
             if _NON_EVENT_TITLE.search(summary):
                 review.append(_review(summary, "문서 메타데이터/인용 날짜 의심 — 일정 아님",
                                       kind=ev_kind, raw_reference=e.get("raw_reference")))
