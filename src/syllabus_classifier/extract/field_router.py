@@ -30,7 +30,8 @@ _EXAM_TYPE = [("midterm", re.compile(r"중간\s*고사|중간\s*시험|중간|mi
 # row/section labels that are generic headers, not event titles
 _GENERIC_EVENT_LABEL = re.compile(
     r"^\s*(?:시험|고사|평가|성적|일정|이벤트|과제|숙제|주차|week|exams?|assignments?|homework|"
-    r"evaluation|schedule|grading|date|일자|날짜)\s*$", re.IGNORECASE)
+    r"evaluation|schedule|grading|date|일자|날짜|"
+    r"\d+\s*주\s*차?|week\s*\d+|\d+\s*강(?:의)?|\d+\s*차\s*시)\s*$", re.IGNORECASE)
 
 
 def _event_title(cand) -> "str | None":
@@ -57,7 +58,7 @@ def _event_title(cand) -> "str | None":
                 line = line.rsplit(sep, 1)[-1]
         line = line.strip(" :|·,\t")
         line = re.sub(r"^\W+", "", line)
-        line = re.sub(r"[#(\[{№-]+$", "", line).strip()   # dangling "Quiz #", "Exam ("
+        line = re.sub(r"[#(\[{№_\-]+$", "", line).strip()   # dangling "Quiz #", "Exam (", "기말고사_"
         # a title starts like a title — a lowercase English start is a sentence
         # fragment from the context window, not an event name.
         if 3 <= len(line) <= 80 and not line.replace(" ", "").isdigit() \
@@ -121,6 +122,18 @@ def _collapse_dateless(entries: list) -> list:
             seen[key] = e
         out.append(e)
     return out
+
+
+def _drop_dateless_when_dated(exams: list) -> list:
+    """단수 시험(중간/기말)에 날짜 확정본이 있으면 같은 type 의 '날짜 없는 조각'은 노이즈로
+    보고 드롭 — 주차표 '4주 ※기말고사_2025.07.20' 한 행이 dated 기말 + dateless 조각(주차
+    토픽·수업시간 오분류)으로 쪼개져 캘린더에 유령 이벤트가 생기던 실사용 버그 차단.
+    quiz/assignment 는 문서에 여럿일 수 있어 대상 아님(중간/기말만 단수)."""
+    dated = {e.get("type") for e in exams
+             if e.get("resolved_date") and e.get("type") in ("midterm", "final")}
+    if not dated:
+        return exams
+    return [e for e in exams if e.get("resolved_date") or e.get("type") not in dated]
 
 
 def _dedup_events(entries: list, *, by_date_sig: bool) -> list:
@@ -254,7 +267,7 @@ def extract_subsystem(doc, classifier=None) -> dict:
     # 한 이벤트가 인접 후보로 쪼개진 조각을 접는다. 시험은 (type,날짜서명)으로 분류기·
     # 주차표 교차-출처까지 병합; 과제는 같은 마감이라도 서로 다른 과제일 수 있어 인접
     # 조각만 접는다(날짜서명 병합은 안 함).
-    exams = _collapse_dateless(_dedup_events(exams, by_date_sig=True))
+    exams = _drop_dateless_when_dated(_collapse_dateless(_dedup_events(exams, by_date_sig=True)))
     assignments = _collapse_dateless(_dedup_events(assignments, by_date_sig=False))
 
     return {

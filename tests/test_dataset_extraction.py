@@ -195,6 +195,33 @@ def test_grading_none_when_no_percentages():
 
 
 # --- (8) 이벤트: 날짜 없는 동일 제목 접기 + 주차표 조각 드롭 (blocker ①) ---------------
+def test_exam_title_rejects_week_markers():
+    # 실사용 버그(연세/UNIST 스페인어): 주차표 행 '4주 ※기말고사_2025.07.20' 에서 행 라벨
+    # '4주'/'2주' 가 시험 제목이 되던 것 → 주차/차시/강 마커는 제목 후보에서 거부.
+    from syllabus_classifier.extract.field_router import _GENERIC_EVENT_LABEL
+    for wk in ("4주", "2주", "Week 4", "week4", "4강", "3차시", "주차", "week"):
+        assert _GENERIC_EVENT_LABEL.match(wk), wk
+    for real in ("기말고사", "중간고사", "미분적분학", "Final Exam"):
+        assert not _GENERIC_EVENT_LABEL.match(real), real
+
+
+def test_drop_dateless_exam_when_dated_exists():
+    # 날짜 확정된 중간/기말이 있으면 같은 type 의 dateless 조각(주차토픽·수업시간 오분류)은
+    # 유령 이벤트가 되므로 드롭 — 캘린더에 가짜 시험/오추정일 안 생기게.
+    from syllabus_classifier.extract.field_router import _drop_dateless_when_dated
+    exams = [
+        {"type": "final", "title": "기말고사", "resolved_date": "2025-07-20"},
+        {"type": "final", "title": "○주제…", "resolved_date": None},          # drop
+        {"type": "midterm", "title": "중간고사", "resolved_date": "2025-07-08"},
+        {"type": "midterm", "title": "수업시간 월2,3", "resolved_date": None},   # drop
+    ]
+    out = _drop_dateless_when_dated(exams)
+    assert len(out) == 2 and all(e["resolved_date"] for e in out)
+    # dated 가 없으면(주차만) 그대로 — abstain 유지
+    only_dateless = [{"type": "final", "title": "기말고사", "resolved_date": None}]
+    assert _drop_dateless_when_dated(only_dateless) == only_dateless
+
+
 def test_collapse_dateless_same_title_exams():
     ev = [{"type": "midterm", "title": "중간고사", "resolved_date": None} for _ in range(6)]
     ev += [{"type": "final", "title": "기말고사", "resolved_date": None} for _ in range(3)]
