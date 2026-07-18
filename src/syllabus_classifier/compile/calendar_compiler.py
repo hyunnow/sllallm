@@ -33,7 +33,9 @@ _SLOT = re.compile(r"^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{2}:\d{2})-(\d{2}:\d{2}
 # 인용)가 confirmed로 새는 것을 잡았다. 제목 단서 + 학년도 원거리 연도로 차단.
 _NON_EVENT_TITLE = re.compile(
     r"출력일|인쇄일|작성일|발행일|갱신일|조회일|^Web\b|https?://|\bRetrieved\b|\bAccessed\b|"
-    r"\bdoi\b|\bpp?\.\s*\d", re.IGNORECASE)
+    r"\bdoi\b|\bpp?\.\s*\d|"
+    # 인쇄/export 푸터 타임스탬프 'YYYY-MM-DD 오전/오후 …' 가 제목이 된 것 — 일정 아님
+    r"\d{4}[-.]\d{1,2}[-.]\d{1,2}\s*(?:오전|오후|am|pm)", re.IGNORECASE)
 # 라벨·주차 참조·bare 숫자는 이벤트 제목이 아니다 — 과목명 폴백으로 교체 (날짜는
 # 유효하므로 이벤트는 유지; 전 코퍼스 스모크의 '8'/'Week 5 (Tuesday'/'제출일')
 _LABELISH_TITLE = re.compile(

@@ -222,6 +222,32 @@ def test_drop_dateless_exam_when_dated_exists():
     assert _drop_dateless_when_dated(only_dateless) == only_dateless
 
 
+def test_office_hours_not_taken_as_class_time():
+    # 건국대 KOCW 실검증: 상담시간 블록('… 월 09:00~10:30, 교강사 연락처 …')을
+    # 강의시간으로 오인하던 것 — office-cue 앞뒤 문맥으로 배제.
+    from syllabus_classifier.extract.rule_fields import _fallback_class_time
+    assert _fallback_class_time("2016-03-02 ~ 2016-06-30 월 09:00 ~ 10:30, 교강사 연락처") is None
+    assert _fallback_class_time("상담시간 화 14:00~15:00") is None
+    # 진짜 강의시간(상담 문맥 없음)은 그대로
+    assert _fallback_class_time("강의시간 월 12:00~13:15") == "월 12:00~13:15"
+
+
+def test_print_timestamp_not_an_event():
+    # 인쇄/export 푸터 'YYYY-MM-DD 오후 …' 가 과제/시험 제목이 되던 것 차단.
+    from syllabus_classifier.compile import compile_record
+    from syllabus_classifier.record.schema import empty_record
+    rec = empty_record()
+    rec["meta"]["academic_year"] = 2026
+    rec["course"]["title_ko"] = "건학정신과 대학생활"
+    rec["schedule"]["assignments"] = [
+        {"title": "2019-12-10 오후", "resolved_date": "2019-12-10",
+         "date_kind": "absolute", "needs_review": False, "raw_reference": "2019-12-10"},
+    ]
+    comp = compile_record(rec, current_year=2026)
+    conf = [e for e in comp["confirmed_events"] if e["kind"] == "assignment"]
+    assert conf == []          # 인쇄 타임스탬프는 확정 이벤트 아님
+
+
 def test_year_snapped_to_header_academic_year():
     # 실사용 요청: 헤더 학년도(2026)가 있는데 시험 날짜가 '2025-07-20'(오래된 템플릿 오타)
     # 이면 학년도로 스냅 → 2026-07-20 확정. 뒤처진(-1) 경우만, 겨울학기 +1 은 미보정.

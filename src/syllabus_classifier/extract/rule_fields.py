@@ -438,14 +438,17 @@ _DAYTIME_SEG = (
     r"(?:\d{1,2}:\d{2}\s*[~\-–—]\s*\d{1,2}:\d{2}"      # 월 12:00~13:15
     r"|\d{1,2}(?:\s*[,·]\s*\d{1,2})*\s*교시)")           # 월5,6교시 (bare 교시는 KB 필요·모호 → 제외)
 _CLASSTIME_RUN = re.compile(rf"{_DAYTIME_SEG}(?:\s*[/,]\s*{_DAYTIME_SEG})*")
-_OFFICE_CUE = re.compile(r"면담|상담|office\s*hour", re.I)
+# 상담/면담(office hour) 블록 마커 — 이 근처의 요일+시각은 강의시간이 아니라 상담시간.
+# 건국대 KOCW: '2016-03-02 ~ 2016-06-30 월 09:00~10:30, 교강사 연락처 …' 처럼 마커가
+# 시각 앞이 아니라 뒤·주변에 흩어져 있어 앞뒤 넓은 창을 본다.
+_OFFICE_CUE = re.compile(r"면담|상담|교강사|연락처|office|hour|e-?\s*mail|이메일", re.I)
 
 
 def _fallback_class_time(text: str) -> Optional[str]:
-    head = text[:1000]
+    head = text[:1200]
     for m in _CLASSTIME_RUN.finditer(head):
-        # 바로 앞 문맥이 면담/상담이면 office hours — 강의시간 아님
-        ctx = head[max(0, m.start() - 12):m.start()]
+        # 요일+시각 앞뒤 문맥이 상담/면담/교강사 블록이면 office hours — 강의시간 아님
+        ctx = head[max(0, m.start() - 40):m.end() + 40]
         if _OFFICE_CUE.search(ctx):
             continue
         return m.group(0).strip()
