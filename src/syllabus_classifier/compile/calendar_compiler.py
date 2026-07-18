@@ -35,7 +35,13 @@ _NON_EVENT_TITLE = re.compile(
     r"출력일|인쇄일|작성일|발행일|갱신일|조회일|^Web\b|https?://|\bRetrieved\b|\bAccessed\b|"
     r"\bdoi\b|\bpp?\.\s*\d|"
     # 인쇄/export 푸터 타임스탬프 'YYYY-MM-DD 오전/오후 …' 가 제목이 된 것 — 일정 아님
-    r"\d{4}[-.]\d{1,2}[-.]\d{1,2}\s*(?:오전|오후|am|pm)", re.IGNORECASE)
+    r"\d{4}[-.]\d{1,2}[-.]\d{1,2}\s*(?:오전|오후|am|pm)|"
+    # 출결/성적 정책 문구가 이벤트로 샌 것(고려대 '유고결석, 3일') — 일정 아님
+    r"유고\s*결석|무단\s*결석|출결|지각|조퇴|결석\s*\d", re.IGNORECASE)
+# 긴 주차 토픽에서 시험 제목만 뽑아낸다 ('…중간시험 1' → '중간시험 1').
+_EXAM_CUE_EXTRACT = re.compile(
+    r"(?:중간고사|기말고사|중간시험|기말시험|기말|중간|퀴즈|quiz|midterm|final(?:\s*exam)?)\s*\d*",
+    re.IGNORECASE)
 # 라벨·주차 참조·bare 숫자는 이벤트 제목이 아니다 — 과목명 폴백으로 교체 (날짜는
 # 유효하므로 이벤트는 유지; 전 코퍼스 스모크의 '8'/'Week 5 (Tuesday'/'제출일')
 _LABELISH_TITLE = re.compile(
@@ -203,6 +209,12 @@ def compile_record(record: dict, kb: Optional[KBResolver] = None,
             summary = orig_title or f"{title} ({label})"
             if _LABELISH_TITLE.match(summary):
                 summary = f"{title} ({label})"
+            # 주차 토픽 전체가 시험 제목이 된 것(숙명 '정규 모집단…중간시험 1') → 깔끔한
+            # 시험 큐만 제목으로. 긴 제목에 시험 단서가 박혀 있을 때만.
+            if ev_kind == "exam" and len(summary) > 14:
+                cue = _EXAM_CUE_EXTRACT.search(summary)
+                if cue:
+                    summary = cue.group(0).strip()
             if e.get("date_kind") == "recurring":
                 review.append(_review(summary, "반복 마감 — 확정 컴파일 미지원(확인 필요)",
                                       kind=ev_kind, raw_reference=e.get("raw_reference")))

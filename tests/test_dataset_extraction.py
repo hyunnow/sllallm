@@ -232,6 +232,39 @@ def test_office_hours_not_taken_as_class_time():
     assert _fallback_class_time("강의시간 월 12:00~13:15") == "월 12:00~13:15"
 
 
+def test_attendance_policy_not_an_event():
+    # 이중파싱 실검증(고려대): 출결 정책 문구('유고결석, 3일')가 과제로 새던 것 차단.
+    from syllabus_classifier.compile import compile_record
+    from syllabus_classifier.record.schema import empty_record
+    rec = empty_record()
+    rec["meta"]["academic_year"] = 2026
+    rec["course"]["title_ko"] = "고급회계"
+    rec["schedule"]["assignments"] = [
+        {"title": "유고결석, 3", "resolved_date": "2026-05-01",
+         "date_kind": "absolute", "needs_review": False, "raw_reference": "일"},
+    ]
+    comp = compile_record(rec, current_year=2026)
+    assert [e for e in comp["confirmed_events"] if e["kind"] == "assignment"] == []
+
+
+def test_weekly_topic_exam_title_cleaned_to_cue():
+    # 이중파싱 실검증(숙명): 주차 토픽 전체('정규 모집단…중간시험 1')가 시험 제목이던 것
+    # → 깔끔한 큐('중간시험 1')로.
+    from syllabus_classifier.compile import compile_record
+    from syllabus_classifier.record.schema import empty_record
+    rec = empty_record()
+    rec["meta"]["academic_year"] = 2026
+    rec["course"]["title_ko"] = "기초통계학"
+    rec["schedule"]["exams"] = [
+        {"title": "정규 모집단에서의 추론 - 평균과 분산의 추론 - 중간시험 1", "type": "midterm",
+         "resolved_date": "2026-04-10", "date_kind": "absolute", "needs_review": False,
+         "raw_reference": "Week 4"},
+    ]
+    comp = compile_record(rec, current_year=2026)
+    exams = [e["summary"] for e in comp["confirmed_events"] if e["kind"] == "exam"]
+    assert exams == ["중간시험 1"]
+
+
 def test_print_timestamp_not_an_event():
     # 인쇄/export 푸터 'YYYY-MM-DD 오후 …' 가 과제/시험 제목이 되던 것 차단.
     from syllabus_classifier.compile import compile_record
